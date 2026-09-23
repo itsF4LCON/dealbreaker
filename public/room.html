@@ -12,7 +12,10 @@
 <body class="room">
 <header class="bar">
   <a class="bar-brand" href="/">dealbreaker</a>
-  <span class="bar-note"><span id="conn" class="conn" title="Connecting"></span>room <strong id="room-code"></strong></span>
+  <span class="bar-note">
+    <span id="conn" class="conn" title="Connecting"></span>room <strong id="room-code"></strong>
+    <button type="button" id="leave-game" class="bar-button" hidden>Leave</button>
+  </span>
 </header>
 
 <main id="app">
@@ -81,5 +84,21 @@
 
 <div id="overlay" class="overlay" hidden></div>
 <div id="toasts" class="toasts" aria-live="polite"></div>
+<div id="callout" class="callout" hidden></div>
+<div id="floats" class="floats" aria-hidden="true"></div>
+<div id="react" class="react" hidden>
+  <div id="react-row" class="react-row" hidden></div>
+  <button type="button" id="react-toggle" class="react-toggle" aria-label="Send a reaction" aria-expanded="false">😀</button>
+</div>
+<div id="confirm" class="overlay confirm" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <h2 id="confirm-title">Leave the game?</h2>
+    <p>Your cards go back into the deck and the game carries on without you.</p>
+    <div class="dialog-actions">
+      <button type="button" id="confirm-leave">Leave</button>
+      <button type="button" id="confirm-stay" class="secondary">Stay</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

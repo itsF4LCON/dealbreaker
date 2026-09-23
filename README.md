@@ -8,7 +8,8 @@ Create a room, send the link, and play. No accounts, no install.
 
 ### Setup
 - 2–8 players. One deck for 2–4 players, two decks shuffled together for 5–8.
-- A deck is 52 normal cards plus 8 special cards: 3 **Duel**, 3 **Party** and 2 **Wheel**.
+- A deck is 52 normal cards plus 13 special cards: 3 **Duel**, 3 **Party**, 2 **Wheel**, 2 **Tag out**, 2 **Shield** and 1 **Double down**.
+- Everyone starts with 10 coins for betting.
 - Everyone gets 7 cards. The top card of the deck is turned over to start the pile. It is always a normal card.
 
 ### Your turn
@@ -30,10 +31,27 @@ Create a room, send the link, and play. No accounts, no install.
   - Everyone passes their hand to the next player
   - Throw away one card of your choice (not your last one)
 
+### Reaction cards
+Play these on the Ready screen of a mini-game, before the countdown starts. On your own turn you can also throw one away on anything, with no effect. Like every special card, it can't be your last card.
+- **Tag out** (duel): pick another player to fight in your place. Bets on you are refunded.
+- **Shield** (any mini-game): if you lose, you don't draw.
+- **Double down** (duel): the loser draws 6 instead of 3.
+
+### Betting
+During a duel, everyone who isn't fighting can bet 1–3 coins on one of the duelists. A winning bet pays back double.
+
+### DEALBREAKER!
+When you play a card and have 1 left, you have 6 seconds to tap **DEALBREAKER!**. If another player taps **CAUGHT!** first, you draw 2.
+
 ### Winning
 - The first player with no cards left wins.
 - Your last card must be a normal card, so you can't win by playing a special card.
 - When the deck runs out, the pile is shuffled back in, except the top card.
+- A player can leave at any time. Their cards are shuffled back into the deck and the game carries on; if only one player is left, they win. A duel with a player who leaves is called off and its bets are refunded.
+- The game-over screen hands out up to 6 awards, like Biggest loser, Duelist, Clown, Coward, Sniper and High roller.
+
+### Reactions
+Tap the 😀 button to send 😂 🔥 💀 🤡 😭 👋 to everyone, at any time.
 
 ### Mini-games
 A random mini-game is picked for every Duel and Party card, never the same one twice in a row. First everyone in it sees how to play and taps Ready; the game starts with a 3-2-1 once all online players are ready, or after 20 seconds.

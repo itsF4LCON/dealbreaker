@@ -100,6 +100,15 @@ pub struct Standing {
     pub player: PlayerId,
     pub value: Option<u32>,
     pub loser: bool,
+    pub shielded: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Bet {
+    pub player: PlayerId,
+    pub on: PlayerId,
+    pub amount: u32,
+    pub payout: Option<i32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -115,6 +124,11 @@ pub struct MiniGame {
     pub deadline: f64,
     pub submitted: Vec<(PlayerId, Option<u32>)>,
     pub standings: Option<Vec<Standing>>,
+    pub turn_from: PlayerId,
+    pub turn_at: Option<PlayerId>,
+    pub shielded: Vec<PlayerId>,
+    pub doubled_by: Option<PlayerId>,
+    pub bets: Vec<Bet>,
 }
 
 impl MiniGame {
@@ -152,7 +166,20 @@ impl MiniGame {
             deadline: now + READY_MS,
             submitted: Vec::new(),
             standings: None,
+            turn_from: mode.card_player(),
+            turn_at: None,
+            shielded: Vec::new(),
+            doubled_by: None,
+            bets: Vec::new(),
         }
+    }
+
+    pub fn is_duel(&self) -> bool {
+        matches!(self.mode, MiniMode::Duel { .. })
+    }
+
+    pub fn penalty(&self) -> usize {
+        self.mode.penalty() * if self.doubled_by.is_some() { 2 } else { 1 }
     }
 
     pub fn started(&self) -> bool {
@@ -247,6 +274,7 @@ impl MiniGame {
                 player,
                 value,
                 loser: i >= cutoff,
+                shielded: self.shielded.contains(&player),
             })
             .collect()
     }

@@ -11,13 +11,21 @@ const ICONS = {
   duel: '<path d="M5 5l14 14M19 5L5 19M3 17l4 4M17 21l4-4"/>',
   party: '<path d="M12 2v5M12 17v5M2 12h5M17 12h5M5 5l3.5 3.5M15.5 15.5L19 19M19 5l-3.5 3.5M8.5 15.5L5 19"/>',
   wheel: '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/>',
+  tag_out: '<path d="M4 8h14l-4-4M20 16H6l4 4"/>',
+  shield: '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/>',
+  double_down: '<path d="M6 5l6 6 6-6M6 12l6 6 6-6"/>',
 };
 
 export const SPECIALS = {
   duel: { name: "Duel", about: "Pick a player for a 1v1 mini-game. The loser draws 3, and that can be you." },
   party: { name: "Party", about: "Everyone plays a mini-game. Last place draws 2." },
   wheel: { name: "Wheel", about: "Spin the wheel. Anything can happen, good or bad." },
+  tag_out: { name: "Tag out", about: "In a duel, pick someone to fight in your place. Or throw it away on your turn." },
+  shield: { name: "Shield", about: "In a mini-game, you don't draw if you lose. Or throw it away on your turn." },
+  double_down: { name: "Double down", about: "In a duel, the loser draws 6 instead of 3. Or throw it away on your turn." },
 };
+
+export const COUNTERS = ["tag_out", "shield", "double_down"];
 
 export function rankLabel(rank) {
   return RANKS[rank] || String(rank);
@@ -64,7 +72,7 @@ export function sortHand(hand) {
   const key = (c) =>
     c.face.kind === "normal"
       ? SUITS[c.face.suit].order * 100 + c.face.rank
-      : 1000 + ["duel", "party", "wheel"].indexOf(c.face.kind);
+      : 1000 + Object.keys(SPECIALS).indexOf(c.face.kind);
   return [...hand].sort((a, b) => key(a) - key(b));
 }
 

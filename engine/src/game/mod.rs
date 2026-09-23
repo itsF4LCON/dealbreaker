@@ -1,6 +1,12 @@
+mod counters;
+mod leaving;
 mod minigame;
+mod social;
+mod stats;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_spice;
 mod view;
 mod wheel;
 
@@ -8,7 +14,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::cards::{build_deck, Card, Face, Match, CARDS_PER_DECK};
 use crate::rng::Rng;
-pub use minigame::{MiniGame, MiniKind, MiniMode, Standing, COUNTDOWN_MS, READY_MS, RESULTS_MS};
+pub use minigame::{
+    Bet, MiniGame, MiniKind, MiniMode, Standing, COUNTDOWN_MS, READY_MS, RESULTS_MS,
+    STOP_CLOCK_TARGET_MS,
+};
+pub use social::{Callout, Reaction};
+pub use stats::{Award, Stats};
 pub use view::{PhaseView, PlayerView, View};
 pub use wheel::WheelOutcome;
 
@@ -24,6 +35,14 @@ pub const OFFLINE_TURN_MS: f64 = 5_000.0;
 pub const CHOOSE_MS: f64 = 15_000.0;
 pub const SPIN_MS: f64 = 4_500.0;
 pub const WHEEL_WAIT_MS: f64 = 15_000.0;
+pub const STARTING_COINS: u32 = 10;
+pub const MAX_BET: u32 = 3;
+pub const CALLOUT_MS: f64 = 6_000.0;
+pub const CALLOUT_PENALTY: usize = 2;
+pub const REACT_COOLDOWN_MS: f64 = 700.0;
+pub const EMOJI_COUNT: u8 = 6;
+pub const TAG_OUT_EXTRA_MS: f64 = 10_000.0;
+const MAX_REACTIONS: usize = 12;
 const MAX_EVENTS: usize = 30;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +61,10 @@ pub enum GameError {
     InvalidTarget,
     InvalidResult,
     UnknownPlayer,
+    CardNotUsableNow,
+    InvalidBet,
+    TooLate,
+    InvalidReaction,
 }
 
 impl GameError {
@@ -61,6 +84,10 @@ impl GameError {
             GameError::InvalidTarget => "Pick another player.",
             GameError::InvalidResult => "That result isn't valid.",
             GameError::UnknownPlayer => "Join the room first.",
+            GameError::CardNotUsableNow => "You can't use that card right now.",
+            GameError::InvalidBet => "You can't place that bet.",
+            GameError::TooLate => "Too late!",
+            GameError::InvalidReaction => "Unknown reaction.",
         }
     }
 }
@@ -72,6 +99,12 @@ pub struct Player {
     token: String,
     hand: Vec<Card>,
     pub connected: bool,
+    #[serde(default)]
+    pub coins: u32,
+    #[serde(default)]
+    pub stats: Stats,
+    #[serde(default)]
+    last_react: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,14 +153,36 @@ pub struct Event {
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum Action {
     Start,
-    Play { card: u16 },
+    Play {
+        card: u16,
+    },
     Draw,
     Pass,
-    Target { player: PlayerId },
-    Discard { card: u16 },
-    Result { value: Option<u32> },
+    Target {
+        player: PlayerId,
+    },
+    Discard {
+        card: u16,
+    },
+    Result {
+        value: Option<u32>,
+    },
     Ready,
     Spin,
+    React {
+        emoji: u8,
+    },
+    Call,
+    Catch,
+    Bet {
+        on: PlayerId,
+        amount: u32,
+    },
+    Counter {
+        card: u16,
+        #[serde(default)]
+        target: Option<PlayerId>,
+    },
     Again,
     Leave,
 }
@@ -147,6 +202,12 @@ pub struct Game {
     minigame_seq: u32,
     #[serde(default)]
     last_minigame: Option<MiniKind>,
+    #[serde(default)]
+    callout: Option<Callout>,
+    #[serde(default)]
+    reactions: Vec<Reaction>,
+    #[serde(default)]
+    reaction_seq: u32,
     rng: Rng,
 }
 
@@ -165,6 +226,9 @@ impl Game {
             event_seq: 0,
             minigame_seq: 0,
             last_minigame: None,
+            callout: None,
+            reactions: Vec::new(),
+            reaction_seq: 0,
             rng: Rng::new(seed),
         }
     }
@@ -197,6 +261,9 @@ impl Game {
             token: token.to_string(),
             hand: Vec::new(),
             connected: false,
+            coins: STARTING_COINS,
+            stats: Stats::default(),
+            last_react: 0.0,
         });
         if self.host.is_none() {
             self.host = Some(id);
@@ -256,8 +323,13 @@ impl Game {
             Action::Result { value } => self.submit_result(id, value, now),
             Action::Ready => self.ready(id, now),
             Action::Spin => self.spin(id, now),
+            Action::React { emoji } => self.react(id, emoji, now),
+            Action::Call => self.call(id, now),
+            Action::Catch => self.catch(id, now),
+            Action::Bet { on, amount } => self.bet(id, on, amount),
+            Action::Counter { card, target } => self.counter(id, card, target, now),
             Action::Again => self.again(id),
-            Action::Leave => self.leave(id),
+            Action::Leave => self.leave(id, now),
         }
     }
 
@@ -311,7 +383,7 @@ impl Game {
                 }
             }
             Phase::MiniGame(m) if m.standings.is_none() => self.resolve_minigame(now),
-            Phase::MiniGame(m) => self.advance(m.mode.card_player(), false, now),
+            Phase::MiniGame(m) => self.resume_after_minigame(&m, now),
             Phase::Wheel {
                 player,
                 outcome: None,
@@ -344,6 +416,11 @@ impl Game {
         self.draw_pile = deck;
         self.discard.clear();
         self.direction = 1;
+        self.callout = None;
+        for p in &mut self.players {
+            p.coins = STARTING_COINS;
+            p.stats = Stats::default();
+        }
         for i in 0..self.players.len() {
             let hand = self.draw_pile.split_off(self.draw_pile.len() - HAND_SIZE);
             self.players[i].hand = hand;
@@ -396,6 +473,7 @@ impl Game {
                 self.to_match = card.as_match();
                 if self.hand(id).is_empty() {
                     self.log(format!("{name} wins!"));
+                    self.callout = None;
                     self.phase = Phase::Over { winner: id };
                 } else {
                     self.advance(id, false, now);
@@ -423,6 +501,13 @@ impl Game {
                     deadline: now + wait,
                 };
             }
+            Face::TagOut | Face::Shield | Face::DoubleDown => {
+                self.log(format!("{name} threw away a {} card", card.title()));
+                self.advance(id, false, now);
+            }
+        }
+        if !matches!(self.phase, Phase::Over { .. }) && self.hand(id).len() == 1 {
+            self.expose(id, now);
         }
         Ok(())
     }
@@ -656,15 +741,72 @@ impl Game {
             unreachable!("resolve_minigame is only called during a mini-game");
         };
         let standings = m.rank(&mut self.rng);
-        let penalty = m.mode.penalty();
+        self.record_stats(&m, &standings);
+        let penalty = m.penalty();
         for s in standings.iter().filter(|s| s.loser) {
-            self.draw(s.player, penalty);
             let name = self.name(s.player);
-            self.log(format!("{name} lost and drew {penalty}"));
+            if s.shielded {
+                self.log(format!("{name} lost, but the Shield blocked it"));
+            } else {
+                self.draw(s.player, penalty);
+                self.log(format!("{name} lost and drew {penalty}"));
+            }
+        }
+        if m.is_duel() {
+            self.pay_bets(&mut m, standings[0].player);
         }
         m.standings = Some(standings);
         m.deadline = now + RESULTS_MS;
         self.phase = Phase::MiniGame(m);
+    }
+
+    fn record_stats(&mut self, m: &MiniGame, standings: &[Standing]) {
+        for (i, s) in standings.iter().enumerate() {
+            let last = i + 1 == standings.len();
+            let Some(p) = self.player_mut(s.player) else {
+                continue;
+            };
+            let stats = &mut p.stats;
+            match (m.kind, s.value) {
+                (MiniKind::HighCard, _) => {}
+                (_, None) => stats.fails += 1,
+                (MiniKind::StopClock, Some(v)) => {
+                    Stats::keep_lowest(&mut stats.best_stop, v.abs_diff(STOP_CLOCK_TARGET_MS))
+                }
+                (MiniKind::QuickDraw, Some(v)) => Stats::keep_lowest(&mut stats.fastest_draw, v),
+                (MiniKind::CashOut, Some(v)) => Stats::keep_lowest(&mut stats.lowest_cash_out, v),
+                _ => {}
+            }
+            if m.is_duel() && i == 0 {
+                stats.duels_won += 1;
+            }
+            if m.is_duel() && last && m.doubled_by == Some(s.player) {
+                stats.reckless += 1;
+            }
+        }
+    }
+
+    fn pay_bets(&mut self, m: &mut MiniGame, winner: PlayerId) {
+        for bet in &mut m.bets {
+            let won = bet.on == winner;
+            bet.payout = Some(if won {
+                bet.amount as i32
+            } else {
+                -(bet.amount as i32)
+            });
+            if won {
+                if let Some(p) = self.player_mut(bet.player) {
+                    p.coins += bet.amount * 2;
+                }
+            }
+        }
+    }
+
+    fn resume_after_minigame(&mut self, m: &MiniGame, now: f64) {
+        match m.turn_at.filter(|&p| self.player(p).is_some()) {
+            Some(p) => self.begin_turn(p, now),
+            None => self.advance(m.turn_from, false, now),
+        }
     }
 
     fn apply_wheel(&mut self, id: PlayerId, outcome: WheelOutcome, now: f64) {
@@ -755,25 +897,8 @@ impl Game {
         self.discard.clear();
         self.to_match = None;
         self.direction = 1;
+        self.callout = None;
         self.phase = Phase::Lobby;
-        Ok(())
-    }
-
-    fn leave(&mut self, id: PlayerId) -> Result<(), GameError> {
-        if !self.in_lobby() {
-            return Err(GameError::WrongPhase);
-        }
-        let name = self.name(id);
-        self.players.retain(|p| p.id != id);
-        if self.host == Some(id) {
-            self.host = self
-                .players
-                .iter()
-                .find(|p| p.connected)
-                .or(self.players.first())
-                .map(|p| p.id);
-        }
-        self.log(format!("{name} left"));
         Ok(())
     }
 
@@ -788,7 +913,15 @@ impl Game {
             };
             drawn.push(card);
         }
-        self.hand_mut(id).extend(drawn.iter().copied());
+        let hand = self.hand_mut(id);
+        hand.extend(drawn.iter().copied());
+        let left = hand.len();
+        if let Some(p) = self.player_mut(id) {
+            p.stats.cards_drawn += drawn.len() as u32;
+        }
+        if self.callout.is_some_and(|c| c.player == id) && left != 1 {
+            self.callout = None;
+        }
         drawn
     }
 

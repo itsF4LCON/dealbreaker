@@ -1,7 +1,8 @@
-import { attachTip, cardElement, consumeHold, hideTip, isRed, rankLabel, renderSpecials, sortHand, suitSymbol } from "./cards.js";
+import { COUNTERS, SPECIALS, attachTip, cardElement, consumeHold, hideTip, isRed, rankLabel, renderSpecials, sortHand, suitSymbol } from "./cards.js";
 import { GAMES, formatResult, runMinigame } from "./minigames.js";
 import { drawWheel, spinWheel, wheelLegend } from "./wheel.js";
 import { load, save } from "./store.js";
+import { initSpice, renderSpice, tickSpice } from "./spice.js";
 
 const $ = (id) => document.getElementById(id);
 const code = (location.pathname.split("/")[2] || "").toUpperCase();
@@ -20,6 +21,8 @@ let retryMs = 1000;
 let lastSeq = null;
 let overlayKey = null;
 let minigameAbort = null;
+let betAmount = 1;
+let tagCard = null;
 const timer = { key: null, endsAt: 0, total: 1 };
 
 function token() {
@@ -151,7 +154,9 @@ function possessive(id) {
 function render() {
   const phase = view.phase;
   document.body.classList.toggle("at-table", phase.kind !== "lobby");
+  $("leave-game").hidden = phase.kind === "lobby";
   showEvents();
+  renderSpice(view);
   if (phase.kind === "lobby") {
     renderLobby();
   } else {
@@ -201,7 +206,7 @@ function renderTable() {
   $("seats").innerHTML = view.players
     .map((p) => {
       const classes = ["seat", p.id === active ? "active" : "", p.id === view.you ? "me" : "", p.connected ? "" : "offline"];
-      return `<li class="${classes.join(" ")}"><span class="name">${escapeHTML(p.name)}</span><span class="count">${p.cards}</span></li>`;
+      return `<li class="${classes.join(" ")}"><span class="name">${escapeHTML(p.name)}</span><span class="count">${p.cards}</span><span class="coins" title="Coins">🪙${p.coins}</span></li>`;
     })
     .join("");
 
@@ -324,6 +329,8 @@ function renderOverlay() {
     if (minigameAbort) minigameAbort.abort();
     minigameAbort = null;
     overlayKey = key;
+    betAmount = 1;
+    tagCard = null;
     overlay.className = "overlay";
     overlay.hidden = key === null;
     overlay.replaceChildren();
@@ -376,6 +383,7 @@ function buildReady(overlay, phase) {
     `<p class="mg-who">${escapeHTML(who)}</p>` +
     `<div class="mg-intro"><p class="mg-game">${info.title}</p><p class="mg-howto">${info.howto}</p></div>` +
     '<ul class="mg-watch" id="ready-list"></ul>' +
+    '<div class="mg-extras" id="ready-extras"></div>' +
     '<button type="button" class="mg-button" id="ready-button">I\'m ready</button>' +
     '<p class="mg-note" data-countdown="Starts by itself in"></p>';
   overlay.append(stage);
@@ -383,6 +391,7 @@ function buildReady(overlay, phase) {
     e.currentTarget.disabled = true;
     send({ t: "ready" });
   });
+  bindExtras(stage.querySelector("#ready-extras"));
   updateReady(phase);
 }
 
@@ -398,6 +407,79 @@ function updateReady(phase) {
   button.hidden = !playing;
   button.disabled = ready;
   button.textContent = ready ? "Waiting for the others…" : "I'm ready";
+  renderExtras(phase, document.getElementById("ready-extras"), true);
+}
+
+function bindExtras(box) {
+  box.addEventListener("click", (e) => {
+    const button = e.target.closest("button");
+    if (!button) return;
+    const { counter, kind, sub, amount, betOn } = button.dataset;
+    if (counter && kind === "tag_out") {
+      tagCard = tagCard === Number(counter) ? null : Number(counter);
+    } else if (counter) {
+      send({ t: "counter", card: Number(counter) });
+    } else if (sub) {
+      send({ t: "counter", card: tagCard, target: Number(sub) });
+      tagCard = null;
+    } else if (amount) {
+      betAmount = Number(amount);
+    } else if (betOn) {
+      send({ t: "bet", on: Number(betOn), amount: betAmount });
+    }
+    if (view.phase.kind === "minigame") renderExtras(view.phase, box, !view.phase.started);
+  });
+}
+
+function renderExtras(phase, box, readyStage) {
+  if (!box) return;
+  const duel = phase.mode.type === "duel";
+  const playing = phase.participants.includes(view.you);
+  const parts = [];
+
+  const effects = phase.shielded.map((id) => `🛡 ${nameOf(id)} ${id === view.you ? "have" : "has"} a Shield`);
+  if (phase.doubled_by !== null) effects.push(`${nameOf(phase.doubled_by)} doubled down: the loser draws ${phase.penalty}`);
+  if (effects.length) parts.push(`<ul class="mg-effects">${effects.map((e) => `<li>${escapeHTML(e)}</li>`).join("")}</ul>`);
+
+  if (readyStage && playing) {
+    const lastCard = view.hand.length <= 1;
+    const usable = (kind) =>
+      (kind === "tag_out" && duel) ||
+      (kind === "shield" && !phase.shielded.includes(view.you)) ||
+      (kind === "double_down" && duel && phase.doubled_by === null);
+    const seen = new Set();
+    const buttons = view.hand
+      .filter((c) => COUNTERS.includes(c.face.kind) && usable(c.face.kind) && !seen.has(c.face.kind) && seen.add(c.face.kind))
+      .map((c) => `<button type="button" class="chip${tagCard === c.id ? " on" : ""}" data-counter="${c.id}" data-kind="${c.face.kind}"${lastCard ? " disabled" : ""}>${SPECIALS[c.face.kind].name}</button>`);
+    if (buttons.length) {
+      parts.push(`<div class="mg-counters"><p class="mg-label">Play a reaction card${lastCard ? " (not your last card)" : ""}</p><div class="chips">${buttons.join("")}</div></div>`);
+    }
+    if (tagCard !== null) {
+      const subs = view.players.filter((p) => p.connected && !phase.participants.includes(p.id));
+      parts.push(
+        `<div class="mg-counters"><p class="mg-label">Who fights in your place?</p><div class="chips">` +
+          (subs.length ? subs.map((p) => `<button type="button" class="chip" data-sub="${p.id}">${escapeHTML(p.name)}</button>`).join("") : '<span class="mg-note">Nobody is free to tag in.</span>') +
+          "</div></div>",
+      );
+    }
+  }
+
+  if (duel && !playing && !phase.results) {
+    const mine = phase.bets.find((b) => b.player === view.you);
+    const coins = player(view.you)?.coins ?? 0;
+    if (mine) {
+      parts.push(`<p class="mg-label">You bet 🪙${mine.amount} on ${escapeHTML(nameOf(mine.on))}</p>`);
+    } else if (coins > 0) {
+      betAmount = Math.min(betAmount, coins);
+      const amounts = [1, 2, 3].filter((n) => n <= coins).map((n) => `<button type="button" class="chip${n === betAmount ? " on" : ""}" data-amount="${n}">🪙${n}</button>`);
+      const sides = [phase.mode.challenger, phase.mode.target].map((id) => `<button type="button" class="chip bet" data-bet-on="${id}">On ${escapeHTML(nameOf(id))}</button>`);
+      parts.push(`<div class="mg-counters"><p class="mg-label">Bet on the winner, pays double</p><div class="chips">${amounts.join("")}</div><div class="chips">${sides.join("")}</div></div>`);
+    }
+  }
+  if (duel && phase.bets.length) {
+    parts.push(`<ul class="mg-bets">${phase.bets.map((b) => `<li>${escapeHTML(nameOf(b.player))}: 🪙${b.amount} on ${escapeHTML(nameOf(b.on))}</li>`).join("")}</ul>`);
+  }
+  box.innerHTML = parts.join("");
 }
 
 function buildWheelWait(overlay, phase) {
@@ -429,8 +511,11 @@ function buildMinigame(overlay, phase) {
     `<p class="mg-mode">${mode}</p>` +
     `<p class="mg-who">${escapeHTML(who)}</p>` +
     `<p class="mg-title">${info.title}. ${info.howto}</p>` +
-    '<div class="mg-area"></div>';
+    '<div class="mg-area"></div>' +
+    '<div class="mg-extras" id="play-extras"></div>';
   overlay.append(stage);
+  bindExtras(stage.querySelector("#play-extras"));
+  renderExtras(phase, stage.querySelector("#play-extras"), false);
   const area = stage.querySelector(".mg-area");
   const playing = phase.participants.includes(view.you) && !phase.submitted.includes(view.you);
   const abort = new AbortController();
@@ -454,6 +539,7 @@ function updateWatchers(phase) {
   list.innerHTML = phase.participants
     .map((id) => `<li class="${phase.submitted.includes(id) ? "done" : ""}">${escapeHTML(nameOf(id))}</li>`)
     .join("");
+  renderExtras(phase, document.getElementById("play-extras"), false);
 }
 
 function buildResults(overlay, phase) {
@@ -468,11 +554,16 @@ function buildResults(overlay, phase) {
         `<span class="place">${i + 1}</span>` +
         `<span class="name">${escapeHTML(nameOf(s.player))}</span>` +
         `<span class="value">${formatResult(phase.game, s.value)}</span>` +
-        (s.loser ? `<span class="penalty">draws ${phase.penalty}</span>` : "") +
+        (s.loser ? `<span class="penalty">${s.shielded ? "🛡 Shield blocked it" : `draws ${phase.penalty}`}</span>` : "") +
         "</li>",
     )
     .join("");
-  stage.innerHTML = `<p class="mg-title">${mode} RESULT, ${GAMES[phase.game].title}</p><ol class="results">${rows}</ol>`;
+  const payouts = phase.bets
+    .map((b) => `<li class="${b.payout > 0 ? "won" : "lost"}">${escapeHTML(nameOf(b.player))} ${b.payout > 0 ? "+" : "−"}🪙${Math.abs(b.payout)}</li>`)
+    .join("");
+  stage.innerHTML =
+    `<p class="mg-title">${mode} RESULT, ${GAMES[phase.game].title}</p><ol class="results">${rows}</ol>` +
+    (payouts ? `<ul class="payouts">${payouts}</ul>` : "");
   overlay.append(stage);
 }
 
@@ -492,6 +583,7 @@ function buildOver(overlay) {
   stage.innerHTML =
     '<p class="mg-title">Game over</p>' +
     '<p class="winner"></p>' +
+    '<ul class="awards" id="awards"></ul>' +
     '<div class="night-actions"><button type="button" id="again">Play again</button><a class="button ghost" href="/">Leave</a></div>' +
     '<p class="mg-note" id="again-wait"></p>';
   overlay.append(stage);
@@ -503,6 +595,9 @@ function updateOver() {
   const winner = document.querySelector("#overlay .winner");
   if (!winner) return;
   winner.textContent = phase.winner === view.you ? "You win!" : `${nameOf(phase.winner)} wins!`;
+  document.getElementById("awards").innerHTML = phase.awards
+    .map((a) => `<li><strong>${escapeHTML(a.title)}</strong><span class="who">${escapeHTML(nameOf(a.player))}</span><span class="why">${escapeHTML(a.detail)}</span></li>`)
+    .join("");
   const host = view.host === view.you;
   document.getElementById("again").hidden = !host;
   document.getElementById("again-wait").textContent = host ? "" : `Waiting for ${player(view.host)?.name ?? "the host"} to start a new game.`;
@@ -535,9 +630,22 @@ function tickTimer() {
     const text = `${el.dataset.countdown} ${Math.ceil(left / 1000)} s`;
     if (el.textContent !== text) el.textContent = text;
   }
+  tickSpice();
   requestAnimationFrame(tickTimer);
 }
 
+$("leave-game").addEventListener("click", () => {
+  $("confirm").hidden = false;
+  $("confirm-stay").focus();
+});
+$("confirm-stay").addEventListener("click", () => ($("confirm").hidden = true));
+$("confirm-leave").addEventListener("click", () => {
+  leaving = true;
+  send({ t: "leave" });
+  setTimeout(() => (location.href = "/"), 600);
+});
+
+initSpice({ send, nameOf, escapeHTML });
 renderSpecials($("lobby-specials"));
 requestAnimationFrame(tickTimer);
 boot();

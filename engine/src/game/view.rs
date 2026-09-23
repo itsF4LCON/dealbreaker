@@ -1,7 +1,8 @@
 use serde::Serialize;
 
 use super::{
-    Event, Game, MiniKind, MiniMode, Phase, PlayerId, Standing, TargetPurpose, WheelOutcome,
+    Award, Bet, Event, Game, MiniKind, MiniMode, Phase, PlayerId, Reaction, Standing,
+    TargetPurpose, WheelOutcome,
 };
 use crate::cards::{Card, Match};
 
@@ -11,6 +12,13 @@ pub struct PlayerView<'a> {
     pub name: &'a str,
     pub cards: usize,
     pub connected: bool,
+    pub coins: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CalloutView {
+    pub player: PlayerId,
+    pub remaining: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -42,6 +50,9 @@ pub enum PhaseView {
         param: Option<u32>,
         results: Option<Vec<Standing>>,
         penalty: usize,
+        shielded: Vec<PlayerId>,
+        doubled_by: Option<PlayerId>,
+        bets: Vec<Bet>,
     },
     Wheel {
         player: PlayerId,
@@ -49,6 +60,7 @@ pub enum PhaseView {
     },
     Over {
         winner: PlayerId,
+        awards: Vec<Award>,
     },
 }
 
@@ -65,6 +77,8 @@ pub struct View<'a> {
     pub phase: PhaseView,
     pub remaining: Option<f64>,
     pub events: &'a [Event],
+    pub callout: Option<CalloutView>,
+    pub reactions: &'a [Reaction],
 }
 
 impl Game {
@@ -113,7 +127,10 @@ impl Game {
                 starts_in: m.play_starts.map(|t| t - now),
                 param: m.secret_for(id),
                 results: m.standings.clone(),
-                penalty: m.mode.penalty(),
+                penalty: m.penalty(),
+                shielded: m.shielded.clone(),
+                doubled_by: m.doubled_by,
+                bets: m.bets.clone(),
             },
             Phase::Wheel {
                 player, outcome, ..
@@ -121,7 +138,10 @@ impl Game {
                 player: *player,
                 outcome: *outcome,
             },
-            Phase::Over { winner } => PhaseView::Over { winner: *winner },
+            Phase::Over { winner } => PhaseView::Over {
+                winner: *winner,
+                awards: self.awards(),
+            },
         };
         Some(View {
             you: id,
@@ -134,6 +154,7 @@ impl Game {
                     name: &p.name,
                     cards: p.hand.len(),
                     connected: p.connected,
+                    coins: p.coins,
                 })
                 .collect(),
             hand: &me.hand,
@@ -144,6 +165,11 @@ impl Game {
             phase,
             remaining: self.deadline().map(|d| (d - now).max(0.0)),
             events: &self.events,
+            callout: self.live_callout(now).map(|c| CalloutView {
+                player: c.player,
+                remaining: c.until - now,
+            }),
+            reactions: &self.reactions,
         })
     }
 }
