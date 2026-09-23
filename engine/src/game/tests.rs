@@ -25,7 +25,10 @@ fn started(n: usize) -> (Game, Vec<PlayerId>) {
 }
 
 fn normal(id: u16, suit: Suit, rank: u8) -> Card {
-    Card { id, face: Face::Normal { suit, rank } }
+    Card {
+        id,
+        face: Face::Normal { suit, rank },
+    }
 }
 
 fn special(id: u16, face: Face) -> Card {
@@ -46,7 +49,11 @@ fn set_match(g: &mut Game, suit: Suit, rank: u8) {
 }
 
 fn force_turn(g: &mut Game, id: PlayerId) {
-    g.phase = Phase::Turn { player: id, drawn: None, deadline: T0 + TURN_MS };
+    g.phase = Phase::Turn {
+        player: id,
+        drawn: None,
+        deadline: T0 + TURN_MS,
+    };
 }
 
 fn current(g: &Game) -> PlayerId {
@@ -61,6 +68,24 @@ fn minigame(g: &Game) -> &MiniGame {
         Phase::MiniGame(m) => m,
         other => panic!("expected a mini-game, got {other:?}"),
     }
+}
+
+fn force_kind(g: &mut Game, kind: MiniKind) {
+    match &mut g.phase {
+        Phase::MiniGame(m) => m.kind = kind,
+        other => panic!("expected a mini-game, got {other:?}"),
+    }
+}
+
+fn party_game(kind: MiniKind, participants: Vec<PlayerId>) -> MiniGame {
+    let mode = MiniMode::Party {
+        card_player: participants[0],
+    };
+    MiniGame::new(1, kind, mode, participants, &mut Rng::new(11), T0)
+}
+
+fn order(m: &MiniGame) -> Vec<PlayerId> {
+    m.rank(&mut Rng::new(3)).iter().map(|s| s.player).collect()
 }
 
 fn total_cards(g: &Game) -> usize {
@@ -85,15 +110,25 @@ fn join_rejects_full_rooms_running_games_and_bad_names() {
 
     let mut g = Game::new(1);
     assert_eq!(g.join(&token(0), "   "), Err(GameError::NameInvalid));
-    assert_eq!(g.join(&token(0), "a name that is far too long"), Err(GameError::NameInvalid));
-    assert_eq!(g.join(&token(0), "  Ran  ").map(|id| g.player(id).unwrap().name.clone()), Ok("Ran".into()));
+    assert_eq!(
+        g.join(&token(0), "a name that is far too long"),
+        Err(GameError::NameInvalid)
+    );
+    assert_eq!(
+        g.join(&token(0), "  Ran  ")
+            .map(|id| g.player(id).unwrap().name.clone()),
+        Ok("Ran".into())
+    );
 }
 
 #[test]
 fn only_the_host_can_start_and_needs_two_players() {
     let (mut g, ids) = lobby(1);
     g.set_connected(ids[0], true, T0);
-    assert_eq!(g.act(ids[0], Action::Start, T0), Err(GameError::NotEnoughPlayers));
+    assert_eq!(
+        g.act(ids[0], Action::Start, T0),
+        Err(GameError::NotEnoughPlayers)
+    );
     let id = g.join(&token(1), "P1").unwrap();
     g.set_connected(id, true, T0);
     assert_eq!(g.act(id, Action::Start, T0), Err(GameError::NotHost));
@@ -119,7 +154,10 @@ fn offline_players_in_the_lobby_are_not_dealt_in() {
 fn start_needs_two_online_players_and_keeps_the_lobby_if_not() {
     let (mut g, ids) = lobby(2);
     g.set_connected(ids[0], true, T0);
-    assert_eq!(g.act(ids[0], Action::Start, T0), Err(GameError::NotEnoughPlayers));
+    assert_eq!(
+        g.act(ids[0], Action::Start, T0),
+        Err(GameError::NotEnoughPlayers)
+    );
     assert_eq!(g.players.len(), 2);
 }
 
@@ -146,12 +184,22 @@ fn playing_a_matching_card_moves_to_the_next_player() {
     let (mut g, ids) = started(3);
     force_turn(&mut g, ids[0]);
     set_match(&mut g, Suit::Hearts, 7);
-    set_hand(&mut g, ids[0], vec![normal(900, Suit::Spades, 7), normal(901, Suit::Clubs, 2)]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![normal(900, Suit::Spades, 7), normal(901, Suit::Clubs, 2)],
+    );
 
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
 
     assert_eq!(current(&g), ids[1]);
-    assert_eq!(g.to_match, Some(Match { suit: Suit::Spades, rank: 7 }));
+    assert_eq!(
+        g.to_match,
+        Some(Match {
+            suit: Suit::Spades,
+            rank: 7
+        })
+    );
     assert_eq!(g.discard.last().unwrap().id, 900);
 }
 
@@ -160,12 +208,25 @@ fn cards_that_do_not_fit_or_are_out_of_turn_are_rejected() {
     let (mut g, ids) = started(3);
     force_turn(&mut g, ids[0]);
     set_match(&mut g, Suit::Hearts, 7);
-    set_hand(&mut g, ids[0], vec![normal(900, Suit::Spades, 2), normal(901, Suit::Hearts, 2)]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![normal(900, Suit::Spades, 2), normal(901, Suit::Hearts, 2)],
+    );
     set_hand(&mut g, ids[1], vec![normal(902, Suit::Hearts, 3)]);
 
-    assert_eq!(g.act(ids[0], Action::Play { card: 900 }, T0), Err(GameError::CardDoesNotFit));
-    assert_eq!(g.act(ids[1], Action::Play { card: 902 }, T0), Err(GameError::NotYourTurn));
-    assert_eq!(g.act(ids[0], Action::Play { card: 902 }, T0), Err(GameError::NoSuchCard));
+    assert_eq!(
+        g.act(ids[0], Action::Play { card: 900 }, T0),
+        Err(GameError::CardDoesNotFit)
+    );
+    assert_eq!(
+        g.act(ids[1], Action::Play { card: 902 }, T0),
+        Err(GameError::NotYourTurn)
+    );
+    assert_eq!(
+        g.act(ids[0], Action::Play { card: 902 }, T0),
+        Err(GameError::NoSuchCard)
+    );
 }
 
 #[test]
@@ -173,7 +234,10 @@ fn a_special_card_cannot_be_the_last_card() {
     let (mut g, ids) = started(2);
     force_turn(&mut g, ids[0]);
     set_hand(&mut g, ids[0], vec![special(900, Face::Duel)]);
-    assert_eq!(g.act(ids[0], Action::Play { card: 900 }, T0), Err(GameError::SpecialLastCard));
+    assert_eq!(
+        g.act(ids[0], Action::Play { card: 900 }, T0),
+        Err(GameError::SpecialLastCard)
+    );
 }
 
 #[test]
@@ -199,8 +263,17 @@ fn drawing_a_playable_card_allows_only_that_card() {
 
     g.act(ids[0], Action::Draw, T0).unwrap();
 
-    assert!(matches!(g.phase, Phase::Turn { drawn: Some(901), .. }));
-    assert_eq!(g.act(ids[0], Action::Play { card: 900 }, T0), Err(GameError::OnlyDrawnCard));
+    assert!(matches!(
+        g.phase,
+        Phase::Turn {
+            drawn: Some(901),
+            ..
+        }
+    ));
+    assert_eq!(
+        g.act(ids[0], Action::Play { card: 900 }, T0),
+        Err(GameError::OnlyDrawnCard)
+    );
     g.act(ids[0], Action::Play { card: 901 }, T0).unwrap();
     assert_eq!(current(&g), ids[1]);
 }
@@ -258,20 +331,33 @@ fn host_moves_to_a_connected_player_when_the_host_leaves() {
 fn a_duel_between_two_players_starts_right_away_and_the_loser_draws_three() {
     let (mut g, ids) = started(2);
     force_turn(&mut g, ids[0]);
-    set_hand(&mut g, ids[0], vec![special(900, Face::Duel), normal(901, Suit::Clubs, 2)]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Duel), normal(901, Suit::Clubs, 2)],
+    );
     let target_before = hand_len(&g, ids[1]);
 
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
+    force_kind(&mut g, MiniKind::StopClock);
     let m = minigame(&g).clone();
-    assert_eq!(m.mode, MiniMode::Duel { challenger: ids[0], target: ids[1] });
+    assert_eq!(
+        m.mode,
+        MiniMode::Duel {
+            challenger: ids[0],
+            target: ids[1]
+        }
+    );
 
-    let (good, bad) = match m.kind {
-        MiniKind::StopClock => (Some(5_010), Some(6_500)),
-        MiniKind::QuickDraw => (Some(210), Some(480)),
-    };
-    g.act(ids[0], Action::Result { value: good }, T0 + 4_000.0).unwrap();
-    assert_eq!(g.act(ids[0], Action::Result { value: good }, T0 + 4_000.0), Err(GameError::WrongPhase));
-    g.act(ids[1], Action::Result { value: bad }, T0 + 4_100.0).unwrap();
+    let (good, bad) = (Some(5_010), Some(6_500));
+    g.act(ids[0], Action::Result { value: good }, T0 + 4_000.0)
+        .unwrap();
+    assert_eq!(
+        g.act(ids[0], Action::Result { value: good }, T0 + 4_000.0),
+        Err(GameError::WrongPhase)
+    );
+    g.act(ids[1], Action::Result { value: bad }, T0 + 4_100.0)
+        .unwrap();
 
     let standings = minigame(&g).standings.clone().unwrap();
     assert_eq!(standings[0].player, ids[0]);
@@ -286,13 +372,27 @@ fn a_duel_between_two_players_starts_right_away_and_the_loser_draws_three() {
 fn a_duel_with_more_players_asks_for_a_target() {
     let (mut g, ids) = started(3);
     force_turn(&mut g, ids[0]);
-    set_hand(&mut g, ids[0], vec![special(900, Face::Duel), normal(901, Suit::Clubs, 2)]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Duel), normal(901, Suit::Clubs, 2)],
+    );
 
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
-    assert!(matches!(g.phase, Phase::ChooseTarget { purpose: TargetPurpose::Duel, .. }));
-    assert_eq!(g.act(ids[0], Action::Target { player: ids[0] }, T0), Err(GameError::InvalidTarget));
+    assert!(matches!(
+        g.phase,
+        Phase::ChooseTarget {
+            purpose: TargetPurpose::Duel,
+            ..
+        }
+    ));
+    assert_eq!(
+        g.act(ids[0], Action::Target { player: ids[0] }, T0),
+        Err(GameError::InvalidTarget)
+    );
 
-    g.act(ids[0], Action::Target { player: ids[2] }, T0).unwrap();
+    g.act(ids[0], Action::Target { player: ids[2] }, T0)
+        .unwrap();
     assert_eq!(minigame(&g).participants, vec![ids[0], ids[2]]);
 }
 
@@ -300,7 +400,11 @@ fn a_duel_with_more_players_asks_for_a_target() {
 fn not_picking_a_target_in_time_picks_one_at_random() {
     let (mut g, ids) = started(3);
     force_turn(&mut g, ids[0]);
-    set_hand(&mut g, ids[0], vec![special(900, Face::Duel), normal(901, Suit::Clubs, 2)]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Duel), normal(901, Suit::Clubs, 2)],
+    );
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
 
     g.tick(T0 + CHOOSE_MS);
@@ -314,15 +418,16 @@ fn not_picking_a_target_in_time_picks_one_at_random() {
 fn party_with_five_players_makes_the_bottom_two_draw_two() {
     let (mut g, ids) = started(5);
     force_turn(&mut g, ids[0]);
-    set_hand(&mut g, ids[0], vec![special(900, Face::Party), normal(901, Suit::Clubs, 2)]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Party), normal(901, Suit::Clubs, 2)],
+    );
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
-    let kind = minigame(&g).kind;
+    force_kind(&mut g, MiniKind::StopClock);
     let before: Vec<usize> = ids.iter().map(|&id| hand_len(&g, id)).collect();
 
-    let values: Vec<Option<u32>> = match kind {
-        MiniKind::StopClock => vec![Some(5_000), Some(5_100), Some(5_200), Some(7_000), None],
-        MiniKind::QuickDraw => vec![Some(200), Some(250), Some(300), Some(900), None],
-    };
+    let values = vec![Some(5_000), Some(5_100), Some(5_200), Some(7_000), None];
     for (&id, &value) in ids.iter().zip(&values) {
         g.act(id, Action::Result { value }, T0 + 5_000.0).unwrap();
     }
@@ -346,7 +451,10 @@ fn a_quick_draw_false_start_loses() {
     let mut m = MiniGame::new(
         1,
         MiniKind::QuickDraw,
-        MiniMode::Duel { challenger: 1, target: 2 },
+        MiniMode::Duel {
+            challenger: 1,
+            target: 2,
+        },
         vec![1, 2],
         &mut Rng::new(3),
         T0,
@@ -376,13 +484,15 @@ fn stop_the_clock_ranks_by_distance_from_five_seconds() {
 fn a_mini_game_ends_at_its_deadline_even_if_someone_never_answers() {
     let (mut g, ids) = started(2);
     force_turn(&mut g, ids[0]);
-    set_hand(&mut g, ids[0], vec![special(900, Face::Party), normal(901, Suit::Clubs, 2)]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Party), normal(901, Suit::Clubs, 2)],
+    );
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
-    let value = match minigame(&g).kind {
-        MiniKind::StopClock => Some(5_000),
-        MiniKind::QuickDraw => Some(250),
-    };
-    g.act(ids[0], Action::Result { value }, T0 + 4_000.0).unwrap();
+    force_kind(&mut g, MiniKind::StopClock);
+    g.act(ids[0], Action::Result { value: Some(5_000) }, T0 + 4_000.0)
+        .unwrap();
     assert!(minigame(&g).standings.is_none());
 
     let deadline = g.deadline().unwrap();
@@ -397,20 +507,178 @@ fn a_mini_game_ends_at_its_deadline_even_if_someone_never_answers() {
 fn a_mini_game_does_not_wait_for_offline_players() {
     let (mut g, ids) = started(3);
     force_turn(&mut g, ids[0]);
-    set_hand(&mut g, ids[0], vec![special(900, Face::Party), normal(901, Suit::Clubs, 2)]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Party), normal(901, Suit::Clubs, 2)],
+    );
     g.set_connected(ids[2], false, T0);
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
-    let value = match minigame(&g).kind {
-        MiniKind::StopClock => Some(5_000),
-        MiniKind::QuickDraw => Some(250),
-    };
-    g.act(ids[0], Action::Result { value }, T0 + 4_000.0).unwrap();
-    g.act(ids[1], Action::Result { value }, T0 + 4_000.0).unwrap();
+    force_kind(&mut g, MiniKind::StopClock);
+    g.act(ids[0], Action::Result { value: Some(5_000) }, T0 + 4_000.0)
+        .unwrap();
+    g.act(ids[1], Action::Result { value: Some(5_000) }, T0 + 4_000.0)
+        .unwrap();
     assert!(minigame(&g).standings.is_some());
 }
 
+#[test]
+fn mash_ranks_the_most_taps_first() {
+    let mut m = party_game(MiniKind::Mash, vec![1, 2, 3]);
+    m.submitted = vec![(1, Some(31)), (2, Some(48)), (3, Some(12))];
+    assert_eq!(order(&m), vec![2, 1, 3]);
+    assert!(!m.accepts(Some(301)));
+}
+
+#[test]
+fn high_card_uses_the_dealt_cards_and_the_lowest_card_loses() {
+    let mut m = party_game(MiniKind::HighCard, vec![1, 2, 3]);
+    m.dealt = vec![(1, 9), (2, 14), (3, 2)];
+    m.submitted = vec![(1, Some(1)), (2, None), (3, Some(14))];
+
+    let standings = m.rank(&mut Rng::new(3));
+
+    let order: Vec<PlayerId> = standings.iter().map(|s| s.player).collect();
+    assert_eq!(order, vec![2, 1, 3]);
+    assert_eq!(standings[2].value, Some(2));
+    assert!(standings[2].loser);
+}
+
+#[test]
+fn high_card_deals_every_participant_a_card() {
+    let m = party_game(MiniKind::HighCard, vec![1, 2, 3, 4]);
+    assert_eq!(m.dealt.len(), 4);
+    assert!(m.dealt.iter().all(|&(_, rank)| (2..=14).contains(&rank)));
+}
+
+#[test]
+fn cash_out_ranks_the_highest_cash_out_first_and_crashing_is_worst() {
+    let mut m = party_game(MiniKind::CashOut, vec![1, 2, 3]);
+    m.param = 300;
+    m.submitted = vec![(1, Some(180)), (2, Some(290)), (3, None)];
+    assert_eq!(order(&m), vec![2, 1, 3]);
+}
+
+#[test]
+fn cashing_out_after_the_crash_counts_as_crashing() {
+    let (mut g, ids) = started(2);
+    force_turn(&mut g, ids[0]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Duel), normal(901, Suit::Clubs, 2)],
+    );
+    g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
+    force_kind(&mut g, MiniKind::CashOut);
+    if let Phase::MiniGame(m) = &mut g.phase {
+        m.param = 250;
+    }
+
+    g.act(ids[0], Action::Result { value: Some(400) }, T0 + 5_000.0)
+        .unwrap();
+    g.act(ids[1], Action::Result { value: Some(120) }, T0 + 5_000.0)
+        .unwrap();
+
+    let standings = minigame(&g).standings.clone().unwrap();
+    assert_eq!(standings[0].player, ids[1]);
+    assert_eq!(standings[1].value, None);
+    assert!(standings[1].loser);
+}
+
+#[test]
+fn cash_out_crash_points_stay_in_range() {
+    for seed in 0..200 {
+        let m = MiniGame::new(
+            1,
+            MiniKind::CashOut,
+            MiniMode::Party { card_player: 1 },
+            vec![1, 2],
+            &mut Rng::new(seed),
+            T0,
+        );
+        assert!((158..=800).contains(&m.param), "crash {}", m.param);
+    }
+}
+
+#[test]
+fn stacker_ranks_the_widest_stack_first_and_falling_off_is_zero() {
+    let mut m = party_game(MiniKind::Stacker, vec![1, 2, 3]);
+    m.submitted = vec![(1, Some(0)), (2, Some(420)), (3, Some(180))];
+    assert_eq!(order(&m), vec![2, 3, 1]);
+    assert!(m.accepts(Some(0)));
+    assert!(!m.accepts(Some(1_001)));
+}
+
+#[test]
+fn the_same_mini_game_never_comes_up_twice_in_a_row() {
+    let (mut g, ids) = started(2);
+    let mut last = None;
+    for i in 0..60u16 {
+        force_turn(&mut g, ids[0]);
+        set_hand(
+            &mut g,
+            ids[0],
+            vec![special(900 + i, Face::Party), normal(990, Suit::Clubs, 2)],
+        );
+        g.act(ids[0], Action::Play { card: 900 + i }, T0).unwrap();
+        let kind = minigame(&g).kind;
+        assert_ne!(Some(kind), last);
+        last = Some(kind);
+    }
+}
+
+#[test]
+fn every_mini_game_kind_comes_up() {
+    let (mut g, ids) = started(2);
+    let mut seen = Vec::new();
+    for i in 0..120u16 {
+        force_turn(&mut g, ids[0]);
+        set_hand(
+            &mut g,
+            ids[0],
+            vec![special(900 + i, Face::Party), normal(990, Suit::Clubs, 2)],
+        );
+        g.act(ids[0], Action::Play { card: 900 + i }, T0).unwrap();
+        let kind = minigame(&g).kind;
+        if !seen.contains(&kind) {
+            seen.push(kind);
+        }
+    }
+    assert_eq!(seen.len(), MiniKind::ALL.len());
+}
+
+#[test]
+fn the_view_shows_the_secret_part_only_to_players_in_the_mini_game() {
+    let (mut g, ids) = started(3);
+    force_turn(&mut g, ids[0]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Duel), normal(901, Suit::Clubs, 2)],
+    );
+    g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
+    g.act(ids[0], Action::Target { player: ids[1] }, T0)
+        .unwrap();
+    force_kind(&mut g, MiniKind::HighCard);
+    if let Phase::MiniGame(m) = &mut g.phase {
+        m.dealt = vec![(ids[0], 7), (ids[1], 12)];
+    }
+
+    let param = |id| match g.view(id, T0).unwrap().phase {
+        PhaseView::Minigame { param, .. } => param,
+        other => panic!("unexpected {other:?}"),
+    };
+    assert_eq!(param(ids[0]), Some(7));
+    assert_eq!(param(ids[1]), Some(12));
+    assert_eq!(param(ids[2]), None);
+}
+
 fn spin(g: &mut Game, id: PlayerId, outcome: WheelOutcome) {
-    g.phase = Phase::Wheel { player: id, outcome, deadline: T0 + SPIN_MS };
+    g.phase = Phase::Wheel {
+        player: id,
+        outcome,
+        deadline: T0 + SPIN_MS,
+    };
     g.tick(T0 + SPIN_MS);
 }
 
@@ -418,7 +686,11 @@ fn spin(g: &mut Game, id: PlayerId, outcome: WheelOutcome) {
 fn playing_a_wheel_card_spins_the_wheel() {
     let (mut g, ids) = started(2);
     force_turn(&mut g, ids[0]);
-    set_hand(&mut g, ids[0], vec![special(900, Face::Wheel), normal(901, Suit::Clubs, 2)]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Wheel), normal(901, Suit::Clubs, 2)],
+    );
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
     assert!(matches!(g.phase, Phase::Wheel { player, .. } if player == ids[0]));
     assert_eq!(g.deadline(), Some(T0 + SPIN_MS));
@@ -451,7 +723,8 @@ fn wheel_pick_a_player_who_draws_two() {
     let (mut g, ids) = started(3);
     let before = hand_len(&g, ids[2]);
     spin(&mut g, ids[0], WheelOutcome::PickDraw);
-    g.act(ids[0], Action::Target { player: ids[2] }, T0).unwrap();
+    g.act(ids[0], Action::Target { player: ids[2] }, T0)
+        .unwrap();
     assert_eq!(hand_len(&g, ids[2]), before + 2);
     assert_eq!(current(&g), ids[1]);
 }
@@ -460,9 +733,14 @@ fn wheel_pick_a_player_who_draws_two() {
 fn wheel_swap_hands() {
     let (mut g, ids) = started(3);
     set_hand(&mut g, ids[0], vec![normal(900, Suit::Clubs, 2)]);
-    set_hand(&mut g, ids[2], vec![normal(901, Suit::Clubs, 3), normal(902, Suit::Clubs, 4)]);
+    set_hand(
+        &mut g,
+        ids[2],
+        vec![normal(901, Suit::Clubs, 3), normal(902, Suit::Clubs, 4)],
+    );
     spin(&mut g, ids[0], WheelOutcome::SwapHands);
-    g.act(ids[0], Action::Target { player: ids[2] }, T0).unwrap();
+    g.act(ids[0], Action::Target { player: ids[2] }, T0)
+        .unwrap();
     assert_eq!(hand_len(&g, ids[0]), 2);
     assert_eq!(g.player(ids[2]).unwrap().hand[0].id, 900);
 }
@@ -483,14 +761,24 @@ fn wheel_pass_hands_moves_every_hand_to_the_next_player() {
 fn wheel_throw_away_removes_a_card_but_keeps_the_card_to_match() {
     let (mut g, ids) = started(2);
     set_match(&mut g, Suit::Hearts, 7);
-    set_hand(&mut g, ids[0], vec![normal(900, Suit::Clubs, 2), normal(901, Suit::Clubs, 3)]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![normal(900, Suit::Clubs, 2), normal(901, Suit::Clubs, 3)],
+    );
     spin(&mut g, ids[0], WheelOutcome::ThrowAway);
 
     g.act(ids[0], Action::Discard { card: 900 }, T0).unwrap();
 
     assert_eq!(hand_len(&g, ids[0]), 1);
     assert_eq!(g.discard.last().unwrap().id, 999);
-    assert_eq!(g.to_match, Some(Match { suit: Suit::Hearts, rank: 7 }));
+    assert_eq!(
+        g.to_match,
+        Some(Match {
+            suit: Suit::Hearts,
+            rank: 7
+        })
+    );
     assert_eq!(current(&g), ids[1]);
 }
 
@@ -507,7 +795,11 @@ fn wheel_throw_away_is_skipped_with_one_card_left() {
 fn an_empty_deck_is_refilled_from_the_pile_except_the_top_card() {
     let (mut g, ids) = started(2);
     g.draw_pile.clear();
-    g.discard = vec![normal(900, Suit::Clubs, 2), normal(901, Suit::Clubs, 3), normal(902, Suit::Hearts, 4)];
+    g.discard = vec![
+        normal(900, Suit::Clubs, 2),
+        normal(901, Suit::Clubs, 3),
+        normal(902, Suit::Hearts, 4),
+    ];
     let before = hand_len(&g, ids[0]);
 
     let drawn = g.draw(ids[0], 1);
@@ -539,7 +831,15 @@ fn the_view_shows_playable_cards_only_to_the_current_player() {
     let (mut g, ids) = started(2);
     force_turn(&mut g, ids[0]);
     set_match(&mut g, Suit::Hearts, 7);
-    set_hand(&mut g, ids[0], vec![normal(900, Suit::Hearts, 2), normal(901, Suit::Clubs, 3), special(902, Face::Wheel)]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![
+            normal(900, Suit::Hearts, 2),
+            normal(901, Suit::Clubs, 3),
+            special(902, Face::Wheel),
+        ],
+    );
 
     match g.view(ids[0], T0).unwrap().phase {
         PhaseView::Turn { playable, .. } => assert_eq!(playable, vec![900, 902]),

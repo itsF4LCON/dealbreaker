@@ -36,8 +36,16 @@ Create a room, send the link, and play. No accounts, no install.
 - When the deck runs out, the pile is shuffled back in, except the top card.
 
 ### Mini-games
+A random mini-game is picked for every Duel and Party card, never the same one twice in a row.
+
 - **Stop the clock**: a timer counts up and disappears after 2 seconds. Tap when you think it reads exactly 5.00 s. Closest wins.
 - **Quick draw**: wait for the flash, then tap as fast as you can. Tapping before the flash counts as a false start and loses.
+- **Mash**: tap as fast as you can for 5 seconds. Most taps wins.
+- **High card**: flip your face-down card. The server deals the cards, so it's pure luck. Lowest card loses, aces are high.
+- **Cash out**: a multiplier climbs from x1.00 until it crashes at a secret point between about x1.6 and x8, the same for everyone. Cash out as high as you dare. Crashing counts as the worst result.
+- **Stacker**: a card slides back and forth. Tap to drop it on the stack; any overhang is cut off. After 5 drops the widest stack wins. Missing completely counts as falling off.
+
+Special cards only show an icon. Hover over one (or hold it on a phone) to see what it does.
 
 Each player's device measures their own result, so a slow connection doesn't decide who wins. The results are trusted, which is fine for a game between friends.
 

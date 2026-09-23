@@ -1,4 +1,4 @@
-import { cardElement, isRed, rankLabel, renderSpecials, sortHand, suitSymbol } from "./cards.js";
+import { attachTip, cardElement, consumeHold, hideTip, isRed, rankLabel, renderSpecials, sortHand, suitSymbol } from "./cards.js";
 import { GAMES, formatResult, runMinigame } from "./minigames.js";
 import { spinWheel } from "./wheel.js";
 import { load, save } from "./store.js";
@@ -212,7 +212,9 @@ function renderTable() {
   $("pile-count").textContent = `${view.pile} left`;
 
   const discard = $("discard");
-  discard.replaceChildren(view.top ? cardElement(view.top, "div") : "");
+  const top = view.top ? cardElement(view.top, "div") : "";
+  if (top && top.dataset.special) attachTip(top, top.dataset.special);
+  discard.replaceChildren(top);
   const m = view.to_match;
   const topSpecial = view.top && view.top.face.kind !== "normal";
   $("match").innerHTML = m && topSpecial
@@ -253,9 +255,11 @@ function renderHand() {
   const discarding = phase.kind === "discard" && phase.player === view.you;
   const playable = new Set(myTurn ? phase.playable : []);
   const hand = $("hand");
+  hideTip();
   hand.replaceChildren(
     ...sortHand(view.hand).map((card) => {
       const el = cardElement(card);
+      if (el.dataset.special) attachTip(el, el.dataset.special);
       if (myTurn) el.classList.add(playable.has(card.id) ? "playable" : "dim");
       if (discarding) el.classList.add("pickable");
       el.addEventListener("click", () => onCard(card, el));
@@ -265,6 +269,7 @@ function renderHand() {
 }
 
 function onCard(card, el) {
+  if (consumeHold(el)) return;
   const phase = view.phase;
   if (phase.kind === "turn" && phase.player === view.you) {
     if (phase.playable.includes(card.id)) return send({ t: "play", card: card.id });
@@ -373,7 +378,7 @@ function buildMinigame(overlay, phase) {
   const playing = phase.participants.includes(view.you) && !phase.submitted.includes(view.you);
   const abort = new AbortController();
   minigameAbort = abort;
-  runMinigame({ area, game: phase.game, startsIn: phase.starts_in, delay: phase.delay_ms, playing, signal: abort.signal }).then(
+  runMinigame({ area, game: phase.game, startsIn: phase.starts_in, param: phase.param, playing, signal: abort.signal }).then(
     (value) => {
       if (abort.signal.aborted) return;
       if (value === undefined) {

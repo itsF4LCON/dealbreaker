@@ -1,6 +1,8 @@
 use serde::Serialize;
 
-use super::{Event, Game, MiniKind, MiniMode, Phase, PlayerId, Standing, TargetPurpose, WheelOutcome};
+use super::{
+    Event, Game, MiniKind, MiniMode, Phase, PlayerId, Standing, TargetPurpose, WheelOutcome,
+};
 use crate::cards::{Card, Match};
 
 #[derive(Debug, Serialize)]
@@ -35,7 +37,7 @@ pub enum PhaseView {
         participants: Vec<PlayerId>,
         submitted: Vec<PlayerId>,
         starts_in: f64,
-        delay_ms: Option<u32>,
+        param: Option<u32>,
         results: Option<Vec<Standing>>,
         penalty: usize,
     },
@@ -75,36 +77,46 @@ impl Game {
                         .iter()
                         .filter(|c| match drawn {
                             Some(d) => c.id == *d,
-                            None => c.fits(self.to_match) && !(c.is_special() && me.hand.len() == 1),
+                            None => {
+                                c.fits(self.to_match) && !(c.is_special() && me.hand.len() == 1)
+                            }
                         })
                         .map(|c| c.id)
                         .collect()
                 } else {
                     Vec::new()
                 };
-                PhaseView::Turn { player: *player, drawn: if mine { *drawn } else { None }, playable }
+                PhaseView::Turn {
+                    player: *player,
+                    drawn: if mine { *drawn } else { None },
+                    playable,
+                }
             }
-            Phase::ChooseTarget { player, purpose, .. } => PhaseView::Target {
+            Phase::ChooseTarget {
+                player, purpose, ..
+            } => PhaseView::Target {
                 player: *player,
                 purpose: *purpose,
                 options: self.others(*player),
             },
             Phase::ChooseDiscard { player, .. } => PhaseView::Discard { player: *player },
-            Phase::MiniGame(m) => {
-                let playing = m.participants.contains(&id);
-                PhaseView::Minigame {
-                    id: m.id,
-                    game: m.kind,
-                    mode: m.mode,
-                    participants: m.participants.clone(),
-                    submitted: m.submitted.iter().map(|(p, _)| *p).collect(),
-                    starts_in: m.play_starts - now,
-                    delay_ms: (playing && m.kind == MiniKind::QuickDraw).then_some(m.delay_ms),
-                    results: m.standings.clone(),
-                    penalty: m.mode.penalty(),
-                }
-            }
-            Phase::Wheel { player, outcome, .. } => PhaseView::Wheel { player: *player, outcome: *outcome },
+            Phase::MiniGame(m) => PhaseView::Minigame {
+                id: m.id,
+                game: m.kind,
+                mode: m.mode,
+                participants: m.participants.clone(),
+                submitted: m.submitted.iter().map(|(p, _)| *p).collect(),
+                starts_in: m.play_starts - now,
+                param: m.secret_for(id),
+                results: m.standings.clone(),
+                penalty: m.mode.penalty(),
+            },
+            Phase::Wheel {
+                player, outcome, ..
+            } => PhaseView::Wheel {
+                player: *player,
+                outcome: *outcome,
+            },
             Phase::Over { winner } => PhaseView::Over { winner: *winner },
         };
         Some(View {
@@ -113,7 +125,12 @@ impl Game {
             players: self
                 .players
                 .iter()
-                .map(|p| PlayerView { id: p.id, name: &p.name, cards: p.hand.len(), connected: p.connected })
+                .map(|p| PlayerView {
+                    id: p.id,
+                    name: &p.name,
+                    cards: p.hand.len(),
+                    connected: p.connected,
+                })
                 .collect(),
             hand: &me.hand,
             top: self.discard.last().copied(),

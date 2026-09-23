@@ -14,9 +14,9 @@ const ICONS = {
 };
 
 export const SPECIALS = {
-  duel: { label: "DUEL", hint: "1v1, loser +3", about: "Pick a player for a 1v1 mini-game. The loser draws 3, and that can be you." },
-  party: { label: "PARTY", hint: "all play, last +2", about: "Everyone plays a mini-game. Last place draws 2." },
-  wheel: { label: "WHEEL", hint: "spin it", about: "Spin the wheel. Anything can happen, good or bad." },
+  duel: { name: "Duel", about: "Pick a player for a 1v1 mini-game. The loser draws 3, and that can be you." },
+  party: { name: "Party", about: "Everyone plays a mini-game. Last place draws 2." },
+  wheel: { name: "Wheel", about: "Spin the wheel. Anything can happen, good or bad." },
 };
 
 export function rankLabel(rank) {
@@ -33,7 +33,7 @@ export function isRed(suit) {
 
 export function cardName(face) {
   if (face.kind === "normal") return `${rankLabel(face.rank)}${suitSymbol(face.suit)}`;
-  return SPECIALS[face.kind].label;
+  return SPECIALS[face.kind].name;
 }
 
 export function cardElement(card, tag = "button") {
@@ -52,13 +52,10 @@ export function cardElement(card, tag = "button") {
       `<span class="pip" aria-hidden="true">${symbol}</span>` +
       `<span class="corner bottom"><span>${rank}</span><span>${symbol}</span></span>`;
   } else {
-    const info = SPECIALS[face.kind];
     el.classList.add("special");
-    el.setAttribute("aria-label", `${info.label} card`);
-    el.innerHTML =
-      `<span class="label">${info.label}</span>` +
-      `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[face.kind]}</svg>` +
-      `<span class="hint">${info.hint}</span>`;
+    el.dataset.special = face.kind;
+    el.setAttribute("aria-label", `${SPECIALS[face.kind].name} card`);
+    el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[face.kind]}</svg>`;
   }
   return el;
 }
@@ -74,13 +71,67 @@ export function sortHand(hand) {
 export function renderSpecials(container) {
   container.replaceChildren(
     ...Object.keys(SPECIALS).map((kind, i) => {
-      const wrap = document.createElement("div");
-      wrap.className = "special-info";
-      wrap.append(cardElement({ id: -1 - i, face: { kind } }, "div"));
-      const p = document.createElement("p");
-      p.textContent = SPECIALS[kind].about;
-      wrap.append(p);
-      return wrap;
+      const row = document.createElement("div");
+      row.className = "special-row";
+      const bubble = document.createElement("p");
+      bubble.className = "bubble";
+      bubble.innerHTML = `<strong>${SPECIALS[kind].name}</strong>${SPECIALS[kind].about}`;
+      row.append(cardElement({ id: -1 - i, face: { kind } }, "div"), bubble);
+      return row;
     }),
   );
+}
+
+let tip = null;
+
+export function hideTip() {
+  if (tip) tip.hidden = true;
+}
+
+function showTip(el, kind) {
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.className = "card-tip";
+    tip.setAttribute("role", "tooltip");
+    document.body.append(tip);
+  }
+  tip.innerHTML = `<strong>${SPECIALS[kind].name}</strong>${SPECIALS[kind].about}`;
+  tip.hidden = false;
+  const rect = el.getBoundingClientRect();
+  const width = tip.offsetWidth;
+  const center = rect.left + rect.width / 2;
+  const left = Math.min(Math.max(center - width / 2, 8), innerWidth - width - 8);
+  tip.style.left = `${left}px`;
+  tip.style.top = `${Math.max(8, rect.top - tip.offsetHeight - 14)}px`;
+  tip.style.setProperty("--arrow-x", `${center - left}px`);
+}
+
+export function attachTip(el, kind) {
+  let timer = null;
+  el.addEventListener("pointerenter", (e) => {
+    if (e.pointerType === "mouse") showTip(el, kind);
+  });
+  el.addEventListener("pointerleave", (e) => {
+    if (e.pointerType === "mouse") hideTip();
+  });
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse") return;
+    timer = setTimeout(() => {
+      el.dataset.held = "1";
+      showTip(el, kind);
+    }, 400);
+  });
+  const release = () => {
+    clearTimeout(timer);
+    if (el.dataset.held) setTimeout(hideTip, 1500);
+  };
+  el.addEventListener("pointerup", release);
+  el.addEventListener("pointercancel", release);
+  el.addEventListener("contextmenu", (e) => e.preventDefault());
+}
+
+export function consumeHold(el) {
+  if (!el.dataset.held) return false;
+  delete el.dataset.held;
+  return true;
 }
