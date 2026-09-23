@@ -77,6 +77,15 @@ fn force_kind(g: &mut Game, kind: MiniKind) {
     }
 }
 
+fn ready_all(g: &mut Game) {
+    let participants = minigame(g).participants.clone();
+    for id in participants {
+        if g.player(id).is_some_and(|p| p.connected) {
+            g.act(id, Action::Ready, T0).unwrap();
+        }
+    }
+}
+
 fn party_game(kind: MiniKind, participants: Vec<PlayerId>) -> MiniGame {
     let mode = MiniMode::Party {
         card_player: participants[0],
@@ -340,6 +349,7 @@ fn a_duel_between_two_players_starts_right_away_and_the_loser_draws_three() {
 
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
     force_kind(&mut g, MiniKind::StopClock);
+    ready_all(&mut g);
     let m = minigame(&g).clone();
     assert_eq!(
         m.mode,
@@ -425,6 +435,7 @@ fn party_with_five_players_makes_the_bottom_two_draw_two() {
     );
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
     force_kind(&mut g, MiniKind::StopClock);
+    ready_all(&mut g);
     let before: Vec<usize> = ids.iter().map(|&id| hand_len(&g, id)).collect();
 
     let values = vec![Some(5_000), Some(5_100), Some(5_200), Some(7_000), None];
@@ -491,6 +502,7 @@ fn a_mini_game_ends_at_its_deadline_even_if_someone_never_answers() {
     );
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
     force_kind(&mut g, MiniKind::StopClock);
+    ready_all(&mut g);
     g.act(ids[0], Action::Result { value: Some(5_000) }, T0 + 4_000.0)
         .unwrap();
     assert!(minigame(&g).standings.is_none());
@@ -515,6 +527,7 @@ fn a_mini_game_does_not_wait_for_offline_players() {
     g.set_connected(ids[2], false, T0);
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
     force_kind(&mut g, MiniKind::StopClock);
+    ready_all(&mut g);
     g.act(ids[0], Action::Result { value: Some(5_000) }, T0 + 4_000.0)
         .unwrap();
     g.act(ids[1], Action::Result { value: Some(5_000) }, T0 + 4_000.0)
@@ -573,6 +586,7 @@ fn cashing_out_after_the_crash_counts_as_crashing() {
     if let Phase::MiniGame(m) = &mut g.phase {
         m.param = 250;
     }
+    ready_all(&mut g);
 
     g.act(ids[0], Action::Result { value: Some(400) }, T0 + 5_000.0)
         .unwrap();
@@ -676,14 +690,14 @@ fn the_view_shows_the_secret_part_only_to_players_in_the_mini_game() {
 fn spin(g: &mut Game, id: PlayerId, outcome: WheelOutcome) {
     g.phase = Phase::Wheel {
         player: id,
-        outcome,
+        outcome: Some(outcome),
         deadline: T0 + SPIN_MS,
     };
     g.tick(T0 + SPIN_MS);
 }
 
 #[test]
-fn playing_a_wheel_card_spins_the_wheel() {
+fn playing_a_wheel_card_waits_for_the_player_to_spin() {
     let (mut g, ids) = started(2);
     force_turn(&mut g, ids[0]);
     set_hand(
@@ -692,8 +706,126 @@ fn playing_a_wheel_card_spins_the_wheel() {
         vec![special(900, Face::Wheel), normal(901, Suit::Clubs, 2)],
     );
     g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
-    assert!(matches!(g.phase, Phase::Wheel { player, .. } if player == ids[0]));
-    assert_eq!(g.deadline(), Some(T0 + SPIN_MS));
+    assert!(matches!(g.phase, Phase::Wheel { outcome: None, .. }));
+    assert_eq!(g.deadline(), Some(T0 + WHEEL_WAIT_MS));
+
+    assert_eq!(g.act(ids[1], Action::Spin, T0), Err(GameError::NotYourTurn));
+    g.act(ids[0], Action::Spin, T0 + 2_000.0).unwrap();
+
+    assert!(matches!(
+        g.phase,
+        Phase::Wheel {
+            outcome: Some(_),
+            ..
+        }
+    ));
+    assert_eq!(g.deadline(), Some(T0 + 2_000.0 + SPIN_MS));
+    assert_eq!(g.act(ids[0], Action::Spin, T0), Err(GameError::WrongPhase));
+}
+
+#[test]
+fn the_wheel_spins_by_itself_if_the_player_waits_too_long() {
+    let (mut g, ids) = started(2);
+    force_turn(&mut g, ids[0]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Wheel), normal(901, Suit::Clubs, 2)],
+    );
+    g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
+
+    g.tick(T0 + WHEEL_WAIT_MS);
+
+    assert!(matches!(
+        g.phase,
+        Phase::Wheel {
+            outcome: Some(_),
+            ..
+        }
+    ));
+}
+
+#[test]
+fn a_mini_game_waits_until_everyone_is_ready() {
+    let (mut g, ids) = started(3);
+    force_turn(&mut g, ids[0]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Duel), normal(901, Suit::Clubs, 2)],
+    );
+    g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
+    g.act(ids[0], Action::Target { player: ids[1] }, T0)
+        .unwrap();
+    force_kind(&mut g, MiniKind::StopClock);
+    assert!(!minigame(&g).started());
+    assert_eq!(g.deadline(), Some(T0 + READY_MS));
+
+    assert_eq!(
+        g.act(ids[0], Action::Result { value: Some(5_000) }, T0),
+        Err(GameError::WrongPhase)
+    );
+    assert_eq!(g.act(ids[2], Action::Ready, T0), Err(GameError::WrongPhase));
+    g.act(ids[0], Action::Ready, T0 + 1_000.0).unwrap();
+    assert_eq!(
+        g.act(ids[0], Action::Ready, T0 + 1_000.0),
+        Err(GameError::WrongPhase)
+    );
+    assert!(!minigame(&g).started());
+    g.act(ids[1], Action::Ready, T0 + 2_000.0).unwrap();
+
+    assert!(minigame(&g).started());
+    match g.view(ids[2], T0 + 2_000.0).unwrap().phase {
+        PhaseView::Minigame {
+            started,
+            ready,
+            starts_in,
+            ..
+        } => {
+            assert!(started);
+            assert_eq!(ready, vec![ids[0], ids[1]]);
+            assert_eq!(starts_in, Some(COUNTDOWN_MS));
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+}
+
+#[test]
+fn a_mini_game_starts_by_itself_after_the_ready_time() {
+    let (mut g, ids) = started(2);
+    force_turn(&mut g, ids[0]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Party), normal(901, Suit::Clubs, 2)],
+    );
+    g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
+
+    g.tick(T0 + READY_MS - 1.0);
+    assert!(!minigame(&g).started());
+    g.tick(T0 + READY_MS);
+
+    assert!(minigame(&g).started());
+    assert!(minigame(&g).standings.is_none());
+}
+
+#[test]
+fn offline_players_do_not_hold_up_the_ready_check() {
+    let (mut g, ids) = started(3);
+    force_turn(&mut g, ids[0]);
+    set_hand(
+        &mut g,
+        ids[0],
+        vec![special(900, Face::Party), normal(901, Suit::Clubs, 2)],
+    );
+    g.act(ids[0], Action::Play { card: 900 }, T0).unwrap();
+    g.act(ids[0], Action::Ready, T0).unwrap();
+    g.act(ids[1], Action::Ready, T0).unwrap();
+    assert!(!minigame(&g).started());
+
+    g.set_connected(ids[2], false, T0 + 1_000.0);
+
+    assert!(minigame(&g).started());
 }
 
 #[test]
@@ -896,4 +1028,8 @@ fn actions_parse_from_client_json() {
     assert_eq!(action, Action::Play { card: 12 });
     let action: Action = serde_json::from_str(r#"{"t":"result","value":null}"#).unwrap();
     assert_eq!(action, Action::Result { value: None });
+    let action: Action = serde_json::from_str(r#"{"t":"ready"}"#).unwrap();
+    assert_eq!(action, Action::Ready);
+    let action: Action = serde_json::from_str(r#"{"t":"spin"}"#).unwrap();
+    assert_eq!(action, Action::Spin);
 }

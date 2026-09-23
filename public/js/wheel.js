@@ -1,12 +1,12 @@
 export const OUTCOMES = [
-  { key: "everyone_draws", short: "ALL +1", text: () => "Everyone draws 1" },
-  { key: "you_draw", short: "YOU +2", text: (name) => `${name} draws 2` },
-  { key: "pick_draw", short: "PICK +2", text: (name) => `${name} picks someone to draw 2` },
-  { key: "swap_hands", short: "SWAP", text: (name) => `${name} swaps hands with someone` },
-  { key: "skip_next", short: "SKIP", text: () => "The next player is skipped" },
-  { key: "reverse", short: "REVERSE", text: () => "The direction reverses" },
-  { key: "pass_hands", short: "PASS ALL", text: () => "Everyone passes their hand on" },
-  { key: "throw_away", short: "THROW 1", text: (name) => `${name} throws a card away` },
+  { key: "everyone_draws", short: "ALL +1", about: "Everyone draws 1 card", text: () => "Everyone draws 1" },
+  { key: "you_draw", short: "YOU +2", about: "The spinner draws 2", text: (name) => `${name} draws 2` },
+  { key: "pick_draw", short: "PICK +2", about: "The spinner picks someone to draw 2", text: (name) => `${name} picks someone to draw 2` },
+  { key: "swap_hands", short: "SWAP", about: "The spinner swaps hands with someone", text: (name) => `${name} swaps hands with someone` },
+  { key: "skip_next", short: "SKIP", about: "The next player is skipped", text: () => "The next player is skipped" },
+  { key: "reverse", short: "REVERSE", about: "The direction of play reverses", text: () => "The direction reverses" },
+  { key: "pass_hands", short: "PASS ALL", about: "Everyone passes their hand to the next player", text: () => "Everyone passes their hand on" },
+  { key: "throw_away", short: "THROW 1", about: "The spinner throws away a card of their choice", text: (name) => `${name} throws a card away` },
 ];
 
 const SIZE = 200;
@@ -35,6 +35,18 @@ function wheelSvg() {
     `<circle cx="${SIZE / 2}" cy="${SIZE / 2}" r="${R + 3}" fill="#fffaf0"/>` +
     parts.join("") +
     `<circle cx="${SIZE / 2}" cy="${SIZE / 2}" r="10" fill="#ff3b1f"/></svg>`
+  );
+}
+
+export function drawWheel(container) {
+  container.innerHTML = `<div class="wheel-wrap small"><div class="wheel-pointer"></div>${wheelSvg()}</div>`;
+}
+
+export function wheelLegend() {
+  return (
+    '<ul class="wheel-legend">' +
+    OUTCOMES.map((o) => `<li><strong>${o.short}</strong>${o.about}</li>`).join("") +
+    "</ul>"
   );
 }
 

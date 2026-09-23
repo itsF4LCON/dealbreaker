@@ -20,7 +20,7 @@ Create a room, send the link, and play. No accounts, no install.
 ### Special cards
 - **Duel**: pick a player. You both play a random mini-game, and the loser draws 3. That can be you.
 - **Party**: everyone plays a random mini-game. Last place draws 2. With 5 or more players, the bottom two draw 2.
-- **Wheel**: spin a wheel with 8 outcomes:
+- **Wheel**: you see the wheel and what each outcome does, then tap Spin (it spins by itself after 15 seconds). The 8 outcomes:
   - Everyone draws 1
   - You draw 2
   - Pick a player who draws 2
@@ -36,7 +36,7 @@ Create a room, send the link, and play. No accounts, no install.
 - When the deck runs out, the pile is shuffled back in, except the top card.
 
 ### Mini-games
-A random mini-game is picked for every Duel and Party card, never the same one twice in a row.
+A random mini-game is picked for every Duel and Party card, never the same one twice in a row. First everyone in it sees how to play and taps Ready; the game starts with a 3-2-1 once all online players are ready, or after 20 seconds.
 
 - **Stop the clock**: a timer counts up and disappears after 2 seconds. Tap when you think it reads exactly 5.00 s. Closest wins.
 - **Quick draw**: wait for the flash, then tap as fast as you can. Tapping before the flash counts as a false start and loses.

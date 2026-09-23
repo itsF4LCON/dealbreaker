@@ -350,7 +350,8 @@ button.card.special:hover:not(:disabled) { background: var(--ink); }
 
 .overlay {
   position: fixed; inset: 0; z-index: 50;
-  display: grid; place-items: center;
+  display: grid; place-items: center; place-items: safe center;
+  overflow-y: auto;
   padding: 16px;
   background: rgba(0, 0, 0, 0.55);
 }
@@ -372,6 +373,18 @@ button.card.special:hover:not(:disabled) { background: var(--ink); }
 .mg-mode { font: 700 clamp(3rem, 18vw, 6rem)/0.9 var(--mono); color: var(--hot); letter-spacing: -0.03em; margin: 0; }
 .mg-who { font: 600 1.2rem/1.3 var(--sans); margin: 0; }
 .mg-title { font: 12px/1.4 var(--mono); color: var(--night-muted); margin: 0; }
+.mg-intro { display: grid; gap: 0.5rem; max-width: 34ch; }
+.mg-game { font: 700 1.6rem/1.1 var(--mono); margin: 0; }
+.mg-howto { font-size: 1.05rem; line-height: 1.5; color: #e7e5e4; margin: 0; }
+#ready-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem 1.2rem; color: var(--night-muted); }
+#ready-list li.done { color: #fff; }
+.wheel-wrap.small { width: min(220px, 56vw); }
+.wheel-legend {
+  list-style: none; margin: 0; padding: 0; width: 100%;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem 1rem;
+  text-align: left; font-size: 0.8rem; line-height: 1.35; color: #e7e5e4;
+}
+.wheel-legend strong { display: block; font: 700 11px/1.3 var(--mono); color: var(--hot); }
 .mg-area { width: 100%; min-height: 260px; display: grid; place-items: center; }
 .mg-count { font: 700 5rem/1 var(--mono); }
 .mg-note { font: 13px/1.5 var(--mono); color: var(--night-muted); margin: 0; }

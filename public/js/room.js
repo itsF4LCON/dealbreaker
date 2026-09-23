@@ -1,6 +1,6 @@
 import { attachTip, cardElement, consumeHold, hideTip, isRed, rankLabel, renderSpecials, sortHand, suitSymbol } from "./cards.js";
 import { GAMES, formatResult, runMinigame } from "./minigames.js";
-import { spinWheel } from "./wheel.js";
+import { drawWheel, spinWheel, wheelLegend } from "./wheel.js";
 import { load, save } from "./store.js";
 
 const $ = (id) => document.getElementById(id);
@@ -306,9 +306,9 @@ function overlayKeyFor(phase) {
     case "target":
       return phase.player === view.you ? `target:${phase.purpose}` : null;
     case "minigame":
-      return `mini:${phase.id}:${phase.results ? "results" : "play"}`;
+      return `mini:${phase.id}:${phase.results ? "results" : phase.started ? "play" : "ready"}`;
     case "wheel":
-      return `wheel:${phase.player}:${phase.outcome}`;
+      return `wheel:${phase.player}:${phase.outcome ?? "wait"}`;
     case "over":
       return `over:${phase.winner}`;
     default:
@@ -329,12 +329,15 @@ function renderOverlay() {
     overlay.replaceChildren();
     if (key === null) return;
     if (phase.kind === "target") buildTarget(overlay, phase);
-    if (phase.kind === "minigame" && !phase.results) buildMinigame(overlay, phase);
+    if (phase.kind === "minigame" && !phase.started) buildReady(overlay, phase);
+    if (phase.kind === "minigame" && phase.started && !phase.results) buildMinigame(overlay, phase);
     if (phase.kind === "minigame" && phase.results) buildResults(overlay, phase);
-    if (phase.kind === "wheel") buildWheel(overlay, phase);
+    if (phase.kind === "wheel" && !phase.outcome) buildWheelWait(overlay, phase);
+    if (phase.kind === "wheel" && phase.outcome) buildWheel(overlay, phase);
     if (phase.kind === "over") buildOver(overlay);
   }
-  if (phase.kind === "minigame" && !phase.results) updateWatchers(phase);
+  if (phase.kind === "minigame" && !phase.started) updateReady(phase);
+  if (phase.kind === "minigame" && phase.started && !phase.results) updateWatchers(phase);
   if (phase.kind === "over") updateOver();
 }
 
@@ -362,6 +365,60 @@ function modeLines(phase) {
   return { mode: "PARTY", who: "Everyone plays" };
 }
 
+function buildReady(overlay, phase) {
+  overlay.classList.add("night");
+  const { mode, who } = modeLines(phase);
+  const info = GAMES[phase.game];
+  const stage = document.createElement("div");
+  stage.className = "night-stage";
+  stage.innerHTML =
+    `<p class="mg-mode">${mode}</p>` +
+    `<p class="mg-who">${escapeHTML(who)}</p>` +
+    `<div class="mg-intro"><p class="mg-game">${info.title}</p><p class="mg-howto">${info.howto}</p></div>` +
+    '<ul class="mg-watch" id="ready-list"></ul>' +
+    '<button type="button" class="mg-button" id="ready-button">I\'m ready</button>' +
+    '<p class="mg-note" data-countdown="Starts by itself in"></p>';
+  overlay.append(stage);
+  stage.querySelector("#ready-button").addEventListener("click", (e) => {
+    e.currentTarget.disabled = true;
+    send({ t: "ready" });
+  });
+  updateReady(phase);
+}
+
+function updateReady(phase) {
+  const list = document.getElementById("ready-list");
+  if (!list) return;
+  list.innerHTML = phase.participants
+    .map((id) => `<li class="${phase.ready.includes(id) ? "done" : ""}">${escapeHTML(nameOf(id))}</li>`)
+    .join("");
+  const button = document.getElementById("ready-button");
+  const playing = phase.participants.includes(view.you);
+  const ready = phase.ready.includes(view.you);
+  button.hidden = !playing;
+  button.disabled = ready;
+  button.textContent = ready ? "Waiting for the others…" : "I'm ready";
+}
+
+function buildWheelWait(overlay, phase) {
+  overlay.classList.add("night");
+  const mine = phase.player === view.you;
+  const stage = document.createElement("div");
+  stage.className = "night-stage";
+  stage.innerHTML =
+    `<p class="mg-title">${mine ? "Your wheel" : `${escapeHTML(nameOf(phase.player))}'s wheel`}</p>` +
+    '<div class="wheel-area"></div>' +
+    wheelLegend() +
+    (mine ? '<button type="button" class="mg-button" id="spin-button">Spin the wheel</button>' : `<p class="mg-note">Waiting for ${escapeHTML(nameOf(phase.player))} to spin…</p>`) +
+    `<p class="mg-note" data-countdown="${mine ? "Spins by itself in" : "Spins in at most"}"></p>`;
+  overlay.append(stage);
+  drawWheel(stage.querySelector(".wheel-area"));
+  stage.querySelector("#spin-button")?.addEventListener("click", (e) => {
+    e.currentTarget.disabled = true;
+    send({ t: "spin" });
+  });
+}
+
 function buildMinigame(overlay, phase) {
   overlay.classList.add("night");
   const { mode, who } = modeLines(phase);
@@ -378,7 +435,7 @@ function buildMinigame(overlay, phase) {
   const playing = phase.participants.includes(view.you) && !phase.submitted.includes(view.you);
   const abort = new AbortController();
   minigameAbort = abort;
-  runMinigame({ area, game: phase.game, startsIn: phase.starts_in, param: phase.param, playing, signal: abort.signal }).then(
+  runMinigame({ area, game: phase.game, startsIn: phase.starts_in ?? 0, param: phase.param, playing, signal: abort.signal }).then(
     (value) => {
       if (abort.signal.aborted) return;
       if (value === undefined) {
@@ -453,7 +510,7 @@ function updateOver() {
 
 function resetTimer() {
   const phase = view.phase;
-  const key = `${phase.kind}:${phase.player ?? ""}:${phase.drawn ?? ""}:${phase.id ?? ""}`;
+  const key = `${phase.kind}:${phase.player ?? ""}:${phase.drawn ?? ""}:${phase.id ?? ""}:${phase.started ?? ""}:${phase.outcome ?? ""}`;
   if (view.remaining === null) {
     timer.key = key;
     timer.total = 1;
@@ -474,6 +531,10 @@ function tickTimer() {
   const turnish = view && ["turn", "target", "discard"].includes(view.phase.kind);
   bar.style.width = turnish ? `${(left / timer.total) * 100}%` : "0%";
   bar.classList.toggle("urgent", turnish && left < 5000);
+  for (const el of document.querySelectorAll("#overlay [data-countdown]")) {
+    const text = `${el.dataset.countdown} ${Math.ceil(left / 1000)} s`;
+    if (el.textContent !== text) el.textContent = text;
+  }
   requestAnimationFrame(tickTimer);
 }
 

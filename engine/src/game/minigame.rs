@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use super::PlayerId;
 use crate::rng::Rng;
 
-pub const INTRO_MS: f64 = 3_000.0;
+pub const READY_MS: f64 = 20_000.0;
+pub const COUNTDOWN_MS: f64 = 3_000.0;
 pub const RESULTS_MS: f64 = 5_000.0;
 pub const STOP_CLOCK_TARGET_MS: u32 = 5_000;
 const GRACE_MS: f64 = 2_500.0;
@@ -109,7 +110,8 @@ pub struct MiniGame {
     pub participants: Vec<PlayerId>,
     pub param: u32,
     pub dealt: Vec<(PlayerId, u32)>,
-    pub play_starts: f64,
+    pub ready: Vec<PlayerId>,
+    pub play_starts: Option<f64>,
     pub deadline: f64,
     pub submitted: Vec<(PlayerId, Option<u32>)>,
     pub standings: Option<Vec<Standing>>,
@@ -138,7 +140,6 @@ impl MiniGame {
                 .collect(),
             _ => Vec::new(),
         };
-        let play_starts = now + INTRO_MS;
         Self {
             id,
             kind,
@@ -146,11 +147,22 @@ impl MiniGame {
             participants,
             param,
             dealt,
-            play_starts,
-            deadline: play_starts + kind.window_ms(param) + GRACE_MS,
+            ready: Vec::new(),
+            play_starts: None,
+            deadline: now + READY_MS,
             submitted: Vec::new(),
             standings: None,
         }
+    }
+
+    pub fn started(&self) -> bool {
+        self.play_starts.is_some()
+    }
+
+    pub fn begin(&mut self, now: f64) {
+        let play_starts = now + COUNTDOWN_MS;
+        self.play_starts = Some(play_starts);
+        self.deadline = play_starts + self.kind.window_ms(self.param) + GRACE_MS;
     }
 
     pub fn has_submitted(&self, id: PlayerId) -> bool {

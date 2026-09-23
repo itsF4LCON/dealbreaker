@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cards::{build_deck, Card, Face, Match, CARDS_PER_DECK};
 use crate::rng::Rng;
-pub use minigame::{MiniGame, MiniKind, MiniMode, Standing, INTRO_MS, RESULTS_MS};
+pub use minigame::{MiniGame, MiniKind, MiniMode, Standing, COUNTDOWN_MS, READY_MS, RESULTS_MS};
 pub use view::{PhaseView, PlayerView, View};
 pub use wheel::WheelOutcome;
 
@@ -23,6 +23,7 @@ pub const DRAWN_MS: f64 = 15_000.0;
 pub const OFFLINE_TURN_MS: f64 = 5_000.0;
 pub const CHOOSE_MS: f64 = 15_000.0;
 pub const SPIN_MS: f64 = 4_500.0;
+pub const WHEEL_WAIT_MS: f64 = 15_000.0;
 const MAX_EVENTS: usize = 30;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -101,7 +102,7 @@ pub enum Phase {
     MiniGame(MiniGame),
     Wheel {
         player: PlayerId,
-        outcome: WheelOutcome,
+        outcome: Option<WheelOutcome>,
         deadline: f64,
     },
     Over {
@@ -125,6 +126,8 @@ pub enum Action {
     Target { player: PlayerId },
     Discard { card: u16 },
     Result { value: Option<u32> },
+    Ready,
+    Spin,
     Again,
     Leave,
 }
@@ -225,12 +228,16 @@ impl Game {
                     player, deadline, ..
                 }
                 | Phase::ChooseDiscard { player, deadline }
-                    if *player == id =>
-                {
+                | Phase::Wheel {
+                    player,
+                    outcome: None,
+                    deadline,
+                } if *player == id => {
                     *deadline = deadline.min(short);
                 }
                 _ => {}
             }
+            self.begin_minigame_if_ready(now);
             self.finish_minigame_if_complete(now);
         }
     }
@@ -247,6 +254,8 @@ impl Game {
             Action::Target { player } => self.choose_target(id, player, now),
             Action::Discard { card } => self.throw_away(id, card, now),
             Action::Result { value } => self.submit_result(id, value, now),
+            Action::Ready => self.ready(id, now),
+            Action::Spin => self.spin(id, now),
             Action::Again => self.again(id),
             Action::Leave => self.leave(id),
         }
@@ -296,10 +305,22 @@ impl Game {
                 let target = others[self.rng.below(others.len())];
                 self.apply_target(player, purpose, target, now);
             }
+            Phase::MiniGame(m) if !m.started() => {
+                if let Phase::MiniGame(m) = &mut self.phase {
+                    m.begin(now);
+                }
+            }
             Phase::MiniGame(m) if m.standings.is_none() => self.resolve_minigame(now),
             Phase::MiniGame(m) => self.advance(m.mode.card_player(), false, now),
             Phase::Wheel {
-                player, outcome, ..
+                player,
+                outcome: None,
+                ..
+            } => self.spin_wheel(player, now),
+            Phase::Wheel {
+                player,
+                outcome: Some(outcome),
+                ..
             } => self.apply_wheel(player, outcome, now),
             Phase::Lobby | Phase::Over { .. } => {}
         }
@@ -390,12 +411,16 @@ impl Game {
                 self.start_minigame(MiniMode::Party { card_player: id }, everyone, now);
             }
             Face::Wheel => {
-                let outcome = WheelOutcome::ALL[self.rng.below(WheelOutcome::ALL.len())];
-                self.log(format!("{name} spins the wheel"));
+                self.log(format!("{name} played a Wheel card"));
+                let wait = if self.player(id).is_some_and(|p| p.connected) {
+                    WHEEL_WAIT_MS
+                } else {
+                    OFFLINE_TURN_MS
+                };
                 self.phase = Phase::Wheel {
                     player: id,
-                    outcome,
-                    deadline: now + SPIN_MS,
+                    outcome: None,
+                    deadline: now + wait,
                 };
             }
         }
@@ -526,6 +551,63 @@ impl Game {
             now,
         );
         self.phase = Phase::MiniGame(game);
+        self.begin_minigame_if_ready(now);
+    }
+
+    fn ready(&mut self, id: PlayerId, now: f64) -> Result<(), GameError> {
+        let Phase::MiniGame(m) = &mut self.phase else {
+            return Err(GameError::WrongPhase);
+        };
+        if m.started() || !m.participants.contains(&id) || m.ready.contains(&id) {
+            return Err(GameError::WrongPhase);
+        }
+        m.ready.push(id);
+        self.begin_minigame_if_ready(now);
+        Ok(())
+    }
+
+    fn begin_minigame_if_ready(&mut self, now: f64) {
+        let Phase::MiniGame(m) = &self.phase else {
+            return;
+        };
+        if m.started() {
+            return;
+        }
+        let waiting = m
+            .participants
+            .iter()
+            .any(|&p| !m.ready.contains(&p) && self.player(p).is_some_and(|pl| pl.connected));
+        if !waiting {
+            if let Phase::MiniGame(m) = &mut self.phase {
+                m.begin(now);
+            }
+        }
+    }
+
+    fn spin(&mut self, id: PlayerId, now: f64) -> Result<(), GameError> {
+        match self.phase {
+            Phase::Wheel {
+                player,
+                outcome: None,
+                ..
+            } if player == id => {
+                self.spin_wheel(id, now);
+                Ok(())
+            }
+            Phase::Wheel { outcome: None, .. } => Err(GameError::NotYourTurn),
+            _ => Err(GameError::WrongPhase),
+        }
+    }
+
+    fn spin_wheel(&mut self, id: PlayerId, now: f64) {
+        let outcome = WheelOutcome::ALL[self.rng.below(WheelOutcome::ALL.len())];
+        let name = self.name(id);
+        self.log(format!("{name} spins the wheel"));
+        self.phase = Phase::Wheel {
+            player: id,
+            outcome: Some(outcome),
+            deadline: now + SPIN_MS,
+        };
     }
 
     fn submit_result(
@@ -537,7 +619,11 @@ impl Game {
         let Phase::MiniGame(m) = &mut self.phase else {
             return Err(GameError::WrongPhase);
         };
-        if m.standings.is_some() || !m.participants.contains(&id) || m.has_submitted(id) {
+        if !m.started()
+            || m.standings.is_some()
+            || !m.participants.contains(&id)
+            || m.has_submitted(id)
+        {
             return Err(GameError::WrongPhase);
         }
         if !m.accepts(value) {
@@ -553,7 +639,7 @@ impl Game {
         let Phase::MiniGame(m) = &self.phase else {
             return;
         };
-        if m.standings.is_some() {
+        if !m.started() || m.standings.is_some() {
             return;
         }
         let waiting = m
