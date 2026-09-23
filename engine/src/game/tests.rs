@@ -92,10 +92,35 @@ fn join_rejects_full_rooms_running_games_and_bad_names() {
 #[test]
 fn only_the_host_can_start_and_needs_two_players() {
     let (mut g, ids) = lobby(1);
+    g.set_connected(ids[0], true, T0);
     assert_eq!(g.act(ids[0], Action::Start, T0), Err(GameError::NotEnoughPlayers));
     let id = g.join(&token(1), "P1").unwrap();
+    g.set_connected(id, true, T0);
     assert_eq!(g.act(id, Action::Start, T0), Err(GameError::NotHost));
     assert!(g.act(ids[0], Action::Start, T0).is_ok());
+}
+
+#[test]
+fn offline_players_in_the_lobby_are_not_dealt_in() {
+    let (mut g, ids) = lobby(3);
+    g.set_connected(ids[0], true, T0);
+    g.set_connected(ids[1], true, T0);
+
+    g.act(ids[0], Action::Start, T0).unwrap();
+
+    assert_eq!(g.players.len(), 2);
+    assert!(g.player(ids[2]).is_none());
+    for &id in &ids[..2] {
+        assert_eq!(hand_len(&g, id), HAND_SIZE);
+    }
+}
+
+#[test]
+fn start_needs_two_online_players_and_keeps_the_lobby_if_not() {
+    let (mut g, ids) = lobby(2);
+    g.set_connected(ids[0], true, T0);
+    assert_eq!(g.act(ids[0], Action::Start, T0), Err(GameError::NotEnoughPlayers));
+    assert_eq!(g.players.len(), 2);
 }
 
 #[test]

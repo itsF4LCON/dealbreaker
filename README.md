@@ -54,7 +54,7 @@ browser ──WebSocket──▶ Worker (Rust) ──▶ Room Durable Object (on
 - **`src/lib.rs`**: the Worker. It creates rooms with a 4-letter code, sends WebSocket connections to the right room, and serves the pages.
 - **`public/`**: plain HTML, CSS and JavaScript, no framework and no build step.
 
-Players are recognised by a random token kept in the browser's `localStorage`, so refreshing the page or reconnecting puts you back in your seat. Rooms delete themselves 30 minutes after the last player leaves.
+Players are recognised by a random token kept in the browser's `localStorage`, so refreshing the page or reconnecting puts you back in your seat. Two tabs in the same browser are the same player; use a private window or a second browser to test alone. When the host starts a game, players who are offline at that moment are removed from the lobby, so a stale seat (for example from an in-app browser) is never dealt in. Rooms delete themselves 30 minutes after the last player leaves.
 
 ## Develop
 

@@ -266,9 +266,10 @@ impl Game {
         if self.host != Some(id) {
             return Err(GameError::NotHost);
         }
-        if self.players.len() < MIN_PLAYERS {
+        if self.players.iter().filter(|p| p.connected).count() < MIN_PLAYERS {
             return Err(GameError::NotEnoughPlayers);
         }
+        self.players.retain(|p| p.connected);
         let decks = if self.players.len() <= 4 { 1 } else { 2 };
         let mut deck = build_deck(decks);
         debug_assert_eq!(deck.len(), decks * CARDS_PER_DECK);

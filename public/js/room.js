@@ -185,9 +185,10 @@ function renderLobby() {
     })
     .join("");
   const host = view.host === view.you;
+  const online = view.players.filter((p) => p.connected).length;
   $("start").hidden = !host;
-  $("start").disabled = view.players.length < 2;
-  $("start").textContent = view.players.length < 2 ? "Waiting for a second player…" : "Start the game";
+  $("start").disabled = online < 2;
+  $("start").textContent = online < 2 ? "Waiting for a second player…" : "Start the game";
   $("lobby-wait").hidden = host;
   $("lobby-wait").textContent = `Waiting for ${player(view.host)?.name ?? "the host"} to start the game.`;
 }
