@@ -37,7 +37,12 @@ export function renderSpice(view) {
 
 export function tickSpice() {
   const box = $("callout");
-  if (!box.hidden && performance.now() > calloutEndsAt) box.hidden = true;
+  if (!box.hidden && performance.now() > calloutEndsAt) setCalloutVisible(false);
+}
+
+function setCalloutVisible(visible) {
+  $("callout").hidden = !visible;
+  document.body.classList.toggle("callout-on", visible);
 }
 
 function showReactions(view) {
@@ -61,7 +66,7 @@ function renderCallout(view) {
   const box = $("callout");
   const callout = view.callout;
   if (!callout) {
-    box.hidden = true;
+    setCalloutVisible(false);
     return;
   }
   calloutEndsAt = performance.now() + callout.remaining;
@@ -70,5 +75,5 @@ function renderCallout(view) {
     callout.player === view.you
       ? '<button type="button" class="callout-me" data-action="call">DEALBREAKER!</button><span>You have 1 card. Tap it before someone catches you.</span>'
       : `<button type="button" class="callout-catch" data-action="catch">CAUGHT ${name.toUpperCase()}!</button><span>${name} has 1 card left</span>`;
-  box.hidden = false;
+  setCalloutVisible(true);
 }

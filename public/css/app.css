@@ -500,13 +500,14 @@ body.at-table .toasts { top: auto; bottom: calc(var(--card-h) + 4.5rem); }
 /* callout */
 
 .callout {
-  position: fixed; z-index: 67; top: 72px; left: 50%; transform: translateX(-50%);
+  position: fixed; z-index: 67; bottom: calc(var(--card-h) + 3.5rem); left: 50%; transform: translateX(-50%);
   display: grid; justify-items: center; gap: 0.4rem;
-  width: min(420px, calc(100vw - 32px));
+  width: min(420px, calc(100vw - 140px));
   font: 12px/1.4 var(--mono); color: var(--ink); text-align: center;
 }
 .callout span { background: var(--paper); border: 1px solid var(--ink); padding: 0.3rem 0.6rem; }
-.callout button { width: 100%; padding: 1.1rem; font-size: 1.2rem; letter-spacing: 0.08em; touch-action: manipulation; }
+body.at-table.callout-on .toasts { bottom: calc(var(--card-h) + 12.5rem); }
+.callout button { width: 100%; padding: 1.1rem; overflow-wrap: anywhere; font-size: 1.2rem; letter-spacing: 0.08em; touch-action: manipulation; }
 .callout-me, .callout-me:hover:not(:disabled) { background: var(--hot); border-color: var(--hot); color: #000; animation: pulse 0.6s ease-in-out infinite alternate; }
 .callout-catch, .callout-catch:hover:not(:disabled) { background: #000; border: 2px solid var(--hot); color: var(--hot); }
 @keyframes pulse { to { transform: scale(1.04); } }
