@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Dealbreaker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23000'/%3E%3Crect x='18' y='12' width='28' height='40' rx='3' fill='%23fffaf0'/%3E%3Cpath d='M26 26l12 12M38 26L26 38' stroke='%23ff3b1f' stroke-width='4'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/app.css">
+<script type="module" src="/js/room.js"></script>
+</head>
+<body class="room">
+<header class="bar">
+  <a class="bar-brand" href="/">dealbreaker</a>
+  <span class="bar-note"><span id="conn" class="conn" title="Connecting"></span>room <strong id="room-code"></strong></span>
+</header>
+
+<main id="app">
+  <section id="screen-loading" class="screen center-screen"><p class="muted">Loading the room…</p></section>
+
+  <section id="screen-missing" class="screen center-screen" hidden>
+    <h1>Room not found</h1>
+    <p class="muted">The code is wrong, or everyone left and the room was closed.</p>
+    <a class="button" href="/">Create a new room</a>
+  </section>
+
+  <section id="screen-name" class="screen center-screen" hidden>
+    <form id="name-form" class="panel stack">
+      <h1>Join the room</h1>
+      <label for="name-input">Your name</label>
+      <input id="name-input" maxlength="16" autocomplete="nickname" required>
+      <button type="submit">Join</button>
+      <p class="error" id="name-error" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <section id="screen-lobby" class="screen lobby" hidden>
+    <div class="lobby-code">
+      <p class="muted">Room code</p>
+      <p class="code" id="lobby-code"></p>
+    </div>
+    <div class="panel stack">
+      <label for="invite">Send this link to your friends</label>
+      <div class="copy-row">
+        <input id="invite" readonly>
+        <button type="button" id="copy-invite">Copy</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2 class="panel-title">Players <span id="player-count" class="muted"></span></h2>
+      <ul id="lobby-players" class="lobby-players"></ul>
+      <div class="lobby-actions">
+        <button type="button" id="start">Start the game</button>
+        <p id="lobby-wait" class="muted" hidden></p>
+        <button type="button" id="leave" class="link">Leave the room</button>
+      </div>
+    </div>
+    <div class="specials" id="lobby-specials"></div>
+  </section>
+
+  <section id="screen-table" class="screen table" hidden>
+    <ul id="seats" class="seats"></ul>
+    <div class="felt">
+      <p id="status" class="status" aria-live="polite"></p>
+      <div class="piles">
+        <button type="button" id="draw-pile" class="pile" aria-label="Draw a card">
+          <span class="card back"></span>
+          <span class="pile-count" id="pile-count"></span>
+        </button>
+        <div id="discard" class="pile"></div>
+      </div>
+      <p id="match" class="match"></p>
+      <div class="timer" aria-hidden="true"><div id="timer-bar" class="timer-bar"></div></div>
+    </div>
+    <div class="hand-bar">
+      <button type="button" id="pass" class="secondary" hidden>Keep it and pass</button>
+    </div>
+    <div id="hand" class="hand"></div>
+  </section>
+</main>
+
+<div id="overlay" class="overlay" hidden></div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+</body>
+</html>

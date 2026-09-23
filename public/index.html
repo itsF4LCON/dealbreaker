@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dealbreaker</title>
+<meta name="description" content="A card game for 2–8 friends in the browser, with duels and party mini-games.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23000'/%3E%3Crect x='18' y='12' width='28' height='40' rx='3' fill='%23fffaf0'/%3E%3Cpath d='M26 26l12 12M38 26L26 38' stroke='%23ff3b1f' stroke-width='4'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/app.css">
+<script type="module" src="/js/home.js"></script>
+</head>
+<body>
+<header class="bar">
+  <a class="bar-brand" href="https://xivlabs.tech">F4LCON <span>/</span> dealbreaker</a>
+  <span class="bar-note">2–8 players</span>
+</header>
+
+<main class="home">
+  <section class="hero">
+    <h1>Dealbreaker</h1>
+    <p class="lede">A card game for friends where the special cards start a mini-game. Win the duel, or draw the cards.</p>
+  </section>
+
+  <section class="panel">
+    <form id="create-form" class="stack">
+      <label for="name">Your name</label>
+      <input id="name" maxlength="16" autocomplete="nickname" required placeholder="What should we call you?">
+      <button type="submit" id="create">Create a room</button>
+    </form>
+    <div class="divider"><span>or join a friend</span></div>
+    <form id="join-form" class="join-row">
+      <label for="code" class="sr-only">Room code</label>
+      <input id="code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" required>
+      <button type="submit" class="secondary">Join</button>
+    </form>
+    <p class="error" id="home-error" role="alert" hidden></p>
+  </section>
+
+  <section class="rules">
+    <h2>How to play</h2>
+    <ol class="rule-list">
+      <li>Everyone gets 7 cards. Play a card that matches the suit or the rank of the card on the pile, or draw one.</li>
+      <li>Special cards can be played on anything, but never as your last card.</li>
+      <li>The first player with no cards left wins.</li>
+    </ol>
+    <div class="specials" id="specials"></div>
+  </section>
+</main>
+</body>
+</html>
